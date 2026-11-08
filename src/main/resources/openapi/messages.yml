@@ -1,0 +1,145 @@
+openapi: 3.1.2
+info:
+  title: Gladys bridge message contracts
+  version: 1.0.0
+  description: |
+    Reusable JSON payload schemas for MQTT/Kafka messages. This document declares
+    data structures only; it introduces no HTTP operations or broker processing.
+    SoilMoistureReading follows the supplied Arduino MQTT example. Values are
+    transported as UTF-8 JSON bytes. Device events and future pump commands have
+    topic declarations but their payload contracts await concrete message formats.
+paths: {}
+components:
+  schemas:
+    SoilMoistureReading:
+      type: object
+      additionalProperties: false
+      description: |
+        MQTT telemetry ingress on gladys/devices/+/telemetry, with intended future
+        Kafka destination gladys.telemetry.raw.v1. The deviceId is the intended
+        Kafka record key for per-device partition ordering. An errors array in a
+        telemetry reading does not make the reading a separate device event and
+        does not imply duplication to the device-event topic.
+      required:
+        - schemaVersion
+        - eventId
+        - eventType
+        - deviceId
+        - bootId
+        - sequence
+        - uptimeMs
+        - observedAt
+        - clockSource
+        - mock
+        - batteryLevelPct
+        - errors
+        - payload
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        eventId:
+          type: string
+          format: uuid
+          description: Identity of this observation; preserved across transport retries.
+        eventType:
+          type: string
+          const: SOIL_MOISTURE_READING
+        deviceId:
+          type: string
+          format: uuid
+          description: Device identity and intended Kafka key.
+        bootId:
+          type: string
+          format: uuid
+          description: Identity of the device boot session.
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Nonnegative sequence within a boot session.
+        uptimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Device uptime in milliseconds at observation.
+        observedAt:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Observation time as Unix epoch milliseconds, not an RFC 3339 string.
+        clockSource:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Clock provenance, for example MANUAL_TEST. No closed vocabulary is established yet.
+        mock:
+          type: boolean
+        batteryLevelPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        errors:
+          type: array
+          description: Device-reported diagnostics; may be empty. The bridge does not interpret them.
+          items:
+            $ref: '#/components/schemas/DeviceError'
+        payload:
+          $ref: '#/components/schemas/SoilMoisturePayload'
+    SoilMoisturePayload:
+      type: object
+      additionalProperties: false
+      required: [plantId, sensorId, rawMoisture, unit, adcResolutionBits, calibrationId, quality]
+      properties:
+        plantId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+        sensorId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+        rawMoisture:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967295
+          description: |
+            Raw ADC count, not a percentage. The relationship between this count,
+            ADC resolution and calibration belongs to the telemetry service.
+        unit:
+          type: string
+          const: adc_count
+        adcResolutionBits:
+          type: integer
+          minimum: 1
+          maximum: 32
+        calibrationId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+        quality:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Device-reported quality, for example GOOD. No closed vocabulary is established yet.
+    DeviceError:
+      type: object
+      additionalProperties: false
+      required: [code, component, severity, message]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        component:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+          description: Initial v1 diagnostic severity vocabulary.
+        message:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'

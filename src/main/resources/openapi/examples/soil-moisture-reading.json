@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "eventId": "6b529bda-4738-45a2-9f4f-c1d4b7a8a00a",
+  "eventType": "SOIL_MOISTURE_READING",
+  "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+  "bootId": "b74217a6-0f12-4a75-b1b8-2d246abbe136",
+  "sequence": 23,
+  "uptimeMs": 28500,
+  "observedAt": 1794164428500,
+  "clockSource": "MANUAL_TEST",
+  "mock": true,
+  "batteryLevelPct": 10,
+  "errors": [
+    {
+      "code": "LOW_BATTERY",
+      "component": "BATTERY",
+      "severity": "ERROR",
+      "message": "Mock battery level is below the pump operating threshold."
+    }
+  ],
+  "payload": {
+    "plantId": "plant-001",
+    "sensorId": "soil-001",
+    "rawMoisture": 2550,
+    "unit": "adc_count",
+    "adcResolutionBits": 12,
+    "calibrationId": "mock-soil-v1",
+    "quality": "GOOD"
+  }
+}

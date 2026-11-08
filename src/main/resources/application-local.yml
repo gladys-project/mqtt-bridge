@@ -1,0 +1,7 @@
+# Host application -> local Docker Compose brokers. Environment variables override these.
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+bridge:
+  mqtt:
+    broker-uri: tcp://localhost:1883

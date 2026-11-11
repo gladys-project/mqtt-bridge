@@ -1,0 +1,6 @@
+# Send only the verified executable JAR; exclude source, Git data, env files and reports.
+**
+!Dockerfile
+!target/
+target/**
+!target/mqtt-kafka-bridge-*.jar

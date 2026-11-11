@@ -1,0 +1,38 @@
+# Maven build output, including generated OpenAPI Java sources
+/target/
+*.class
+
+# Local IDE configuration
+/.idea/
+/.vscode/
+/.settings/
+/.classpath
+/.project
+/.factorypath
+*.iml
+*.ipr
+*.iws
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+
+# Logs and JVM crash dumps
+/logs/
+*.log
+hs_err_pid*
+replay_pid*
+.attach_pid*
+*.hprof
+
+# Editor temporary files
+*.swp
+*.swo
+*.tmp
+*~
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

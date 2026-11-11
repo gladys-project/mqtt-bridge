@@ -2,7 +2,8 @@ package com.gladys.bridge.config.properties;
 
 import java.nio.charset.StandardCharsets;
 
-import org.eclipse.paho.client.mqttv3.MqttTopic;
+import com.hivemq.client.mqtt.datatypes.MqttTopic;
+import com.hivemq.client.mqtt.datatypes.MqttTopicFilter;
 
 final class MqttTopicValidation {
     private MqttTopicValidation() {
@@ -19,7 +20,11 @@ final class MqttTopicValidation {
             return false;
         }
         try {
-            MqttTopic.validate(value, filter);
+            if (filter) {
+                MqttTopicFilter.of(value);
+            } else {
+                MqttTopic.of(value);
+            }
             return true;
         } catch (IllegalArgumentException ignored) {
             return false;

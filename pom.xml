@@ -12,34 +12,96 @@
     <artifactId>mqtt-kafka-bridge</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>mqtt-kafka-bridge</name>
-    <description>Gladys MQTT and Kafka infrastructure foundation</description>
+    <description>Gladys MQTT/Kafka contracts and configuration foundation</description>
     <properties>
         <java.version>25</java.version>
+        <spring-cloud.version>2025.1.4</spring-cloud.version>
         <openapi-generator.version>7.26.0</openapi-generator.version>
         <swagger-parser.version>2.1.48</swagger-parser.version>
         <json-schema-validator.version>3.0.9</json-schema-validator.version>
-        <paho.version>1.2.5</paho.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+        <hivemq-mqtt-client.version>1.4.1</hivemq-mqtt-client.version>
         <project.build.outputTimestamp>2026-11-08T00:00:00Z</project.build.outputTimestamp>
     </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
-        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webflux</artifactId></dependency>
-        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
-        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
-        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-kafka</artifactId></dependency>
         <dependency>
-            <groupId>org.eclipse.paho</groupId><artifactId>org.eclipse.paho.client.mqttv3</artifactId><version>${paho.version}</version>
-        </dependency>
-        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webflux-test</artifactId><scope>test</scope></dependency>
-        <dependency><groupId>io.projectreactor</groupId><artifactId>reactor-test</artifactId><scope>test</scope></dependency>
-        <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-junit-jupiter</artifactId><scope>test</scope></dependency>
-        <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-kafka</artifactId><scope>test</scope></dependency>
-        <dependency>
-            <groupId>io.swagger.parser.v3</groupId><artifactId>swagger-parser-v3</artifactId>
-            <version>${swagger-parser.version}</version><scope>test</scope>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>${mapstruct.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId>
-            <version>${json-schema-validator.version}</version><scope>test</scope>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-stream-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hivemq</groupId>
+            <artifactId>hivemq-mqtt-client</artifactId>
+            <version>${hivemq-mqtt-client.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.swagger.parser.v3</groupId>
+            <artifactId>swagger-parser-v3</artifactId>
+            <version>${swagger-parser.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>${json-schema-validator.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
     <build>
@@ -48,48 +110,121 @@
                 <groupId>org.openapitools</groupId>
                 <artifactId>openapi-generator-maven-plugin</artifactId>
                 <version>${openapi-generator.version}</version>
+                <configuration>
+                    <generatorName>spring</generatorName>
+                    <modelPackage>com.gladys.bridge.message</modelPackage>
+                    <cleanupOutput>true</cleanupOutput>
+                    <generateApis>false</generateApis>
+                    <generateApiTests>false</generateApiTests>
+                    <generateApiDocumentation>false</generateApiDocumentation>
+                    <generateModelTests>false</generateModelTests>
+                    <generateModelDocumentation>false</generateModelDocumentation>
+                    <generateSupportingFiles>false</generateSupportingFiles>
+                    <configOptions>
+                        <useSpringBoot4>true</useSpringBoot4>
+                        <useJackson3>true</useJackson3>
+                        <reactive>true</reactive>
+                        <annotationLibrary>none</annotationLibrary>
+                        <documentationProvider>none</documentationProvider>
+                        <openApiNullable>false</openApiNullable>
+                        <useBeanValidation>true</useBeanValidation>
+                        <additionalModelTypeAnnotations>@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)</additionalModelTypeAnnotations>
+                        <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                        <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
+                        <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>
+                    </configOptions>
+                </configuration>
                 <executions>
                     <execution>
-                        <id>generate-message-models</id>
+                        <id>generate-mqtt-inbound-models</id>
                         <phase>generate-sources</phase>
-                        <goals><goal>generate</goal></goals>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
                         <configuration>
-                            <inputSpec>${project.basedir}/src/main/resources/openapi/messages.yml</inputSpec>
-                            <generatorName>spring</generatorName>
-                            <modelPackage>com.gladys.bridge.message</modelPackage>
-                            <output>${project.build.directory}/generated-sources/openapi</output>
-                            <cleanupOutput>true</cleanupOutput>
-                            <generateApis>false</generateApis>
-                            <generateApiTests>false</generateApiTests>
-                            <generateApiDocumentation>false</generateApiDocumentation>
-                            <generateModelTests>false</generateModelTests>
-                            <generateModelDocumentation>false</generateModelDocumentation>
-                            <generateSupportingFiles>false</generateSupportingFiles>
-                            <configOptions>
-                                <useSpringBoot4>true</useSpringBoot4>
-                                <useJackson3>true</useJackson3>
-                                <reactive>true</reactive>
-                                <annotationLibrary>none</annotationLibrary>
-                                <documentationProvider>none</documentationProvider>
-                                <openApiNullable>false</openApiNullable>
-                                <useBeanValidation>true</useBeanValidation>
-                                <hideGenerationTimestamp>true</hideGenerationTimestamp>
-                                <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
-                                <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>
-                            </configOptions>
+                            <inputSpec>${project.basedir}/src/main/resources/openapi/mqtt-inbound.yml</inputSpec>
+                            <output>${project.build.directory}/generated-sources/openapi/mqtt-inbound</output>
+                            <modelsToGenerate>MqttTelemetryMessage,TelemetryPayload,DeviceError</modelsToGenerate>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>generate-kafka-raw-telemetry-models</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputSpec>${project.basedir}/src/main/resources/openapi/kafka-raw-telemetry.yml</inputSpec>
+                            <output>${project.build.directory}/generated-sources/openapi/kafka-raw-telemetry</output>
+                            <modelsToGenerate>KafkaRawTelemetry</modelsToGenerate>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
-            <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
-                <configuration><includes><include>**/*Test.java</include></includes></configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok-mapstruct-binding</artifactId>
+                            <version>${lombok-mapstruct-binding.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                    <compilerArgs>
+                        <arg>-Amapstruct.suppressGeneratorTimestamp=true</arg>
+                        <arg>-Amapstruct.suppressGeneratorVersionInfoComment=true</arg>
+                    </compilerArgs>
+                </configuration>
             </plugin>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
-                <configuration><includes><include>**/*IT.java</include></includes></configuration>
-                <executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

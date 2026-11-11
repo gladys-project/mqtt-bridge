@@ -1,25 +1,19 @@
 openapi: 3.1.2
 info:
-  title: Gladys bridge message contracts
+  title: Gladys MQTT inbound messages
   version: 1.0.0
-  description: |
-    Reusable JSON payload schemas for MQTT/Kafka messages. This document declares
-    data structures only; it introduces no HTTP operations or broker processing.
-    SoilMoistureReading follows the supplied Arduino MQTT example. Values are
-    transported as UTF-8 JSON bytes. Device events and future pump commands have
-    topic declarations but their payload contracts await concrete message formats.
+  description: Device observation received over MQTT, containing device data and raw telemetry.
 paths: {}
 components:
   schemas:
-    SoilMoistureReading:
+    MqttTelemetryMessage:
       type: object
       additionalProperties: false
       description: |
-        MQTT telemetry ingress on gladys/devices/+/telemetry, with intended future
-        Kafka destination gladys.telemetry.raw.v1. The deviceId is the intended
-        Kafka record key for per-device partition ordering. An errors array in a
-        telemetry reading does not make the reading a separate device event and
-        does not imply duplication to the device-event topic.
+        Complete device observation received on the MQTT telemetry topic. The bridge
+        preserves the envelope, device diagnostics and sensor payload in one Kafka
+        record keyed by deviceId. Downstream services resolve soil from sensorId;
+        a device may report readings from different sensors in different soils.
       required:
         - schemaVersion
         - eventId
@@ -44,7 +38,8 @@ components:
           description: Identity of this observation; preserved across transport retries.
         eventType:
           type: string
-          const: SOIL_MOISTURE_READING
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Sensor observation type, for example SOIL_MOISTURE_READING.
         deviceId:
           type: string
           format: uuid
@@ -87,43 +82,29 @@ components:
           items:
             $ref: '#/components/schemas/DeviceError'
         payload:
-          $ref: '#/components/schemas/SoilMoisturePayload'
-    SoilMoisturePayload:
+          $ref: '#/components/schemas/TelemetryPayload'
+    TelemetryPayload:
       type: object
-      additionalProperties: false
-      required: [plantId, sensorId, rawMoisture, unit, adcResolutionBits, calibrationId, quality]
+      additionalProperties: true
+      description: |
+        Sensor-specific reading. sensorId identifies the sensor; downstream services
+        resolve its soil and calibration context. Measurement fields are preserved
+        without interpretation, supporting different sensor types and soils.
+        For moisture, rawMoisture is an ADC count, not a percentage.
+      required: [sensorId]
       properties:
-        plantId:
-          type: string
-          minLength: 1
-          pattern: '[\s\S]*\S[\s\S]*'
         sensorId:
           type: string
           minLength: 1
           pattern: '[\s\S]*\S[\s\S]*'
-        rawMoisture:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 4294967295
-          description: |
-            Raw ADC count, not a percentage. The relationship between this count,
-            ADC resolution and calibration belongs to the telemetry service.
-        unit:
+        plantId:
           type: string
-          const: adc_count
-        adcResolutionBits:
-          type: integer
-          minimum: 1
-          maximum: 32
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
         calibrationId:
           type: string
           minLength: 1
           pattern: '[\s\S]*\S[\s\S]*'
-        quality:
-          type: string
-          pattern: '^[A-Z][A-Z0-9_]*$'
-          description: Device-reported quality, for example GOOD. No closed vocabulary is established yet.
     DeviceError:
       type: object
       additionalProperties: false

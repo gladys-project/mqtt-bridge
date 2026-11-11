@@ -6,8 +6,6 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -22,43 +20,17 @@ class InfrastructureTest {
     private final ApplicationContextRunner context = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
             .withPropertyValues("spring.config.location=classpath:/application-test.yml")
-            .withUserConfiguration(MqttConfiguration.class, PropertiesTest.BindingConfiguration.class)
             .withConfiguration(org.springframework.boot.autoconfigure.AutoConfigurations.of(
                     org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration.class));
 
     @Test
-    void createsDisconnectedMqttClientAndExplicitMqtt311Options() {
-        context.run(ctx -> {
-            assertThat(ctx).hasSingleBean(MqttAsyncClient.class).hasSingleBean(MqttConnectOptions.class);
-            var client = ctx.getBean(MqttAsyncClient.class);
-            assertThat(client.isConnected()).isFalse();
-            assertThat(client.getServerURI()).isEqualTo("tcp://127.0.0.1:1");
-            assertThat(client.getClientId()).isEqualTo("mqtt-kafka-bridge");
-            var options = ctx.getBean(MqttConnectOptions.class);
-            assertThat(options.getMqttVersion()).isEqualTo(MqttConnectOptions.MQTT_VERSION_3_1_1);
-            assertThat(options.getConnectionTimeout()).isEqualTo(5);
-            assertThat(options.getKeepAliveInterval()).isEqualTo(30);
-            assertThat(options.isCleanSession()).isTrue();
-            assertThat(options.isAutomaticReconnect()).isFalse();
-            assertThat(options.getUserName()).isNull();
-            assertThat(options.getPassword()).isNull();
-        });
-    }
-
-    @Test
-    void validatesSharedDefaultsAndLeavesMqttDisconnected() {
-        context.withPropertyValues("spring.config.location=classpath:/application.yml",
-                "bridge.mqtt.username=", "bridge.mqtt.password=").run(ctx -> {
+    void validatesSharedTopicDefaults() {
+        context.withPropertyValues("spring.config.location=classpath:/application.yml").run(ctx -> {
             assertThat(ctx).hasNotFailed();
-            var mqtt = ctx.getBean(com.gladys.bridge.config.properties.MqttProperties.class);
-            assertThat(mqtt.telemetryTopic()).isEqualTo("gladys/devices/+/telemetry");
-            assertThat(mqtt.deviceEventTopic()).isEqualTo("gladys/devices/+/events");
-            assertThat(mqtt.commandTopicTemplate()).isEqualTo("gladys/devices/{deviceId}/commands");
-            var topics = ctx.getBean(com.gladys.bridge.config.properties.BridgeProperties.class).topics();
-            assertThat(topics.telemetry()).isEqualTo("gladys.telemetry.raw.v1");
-            assertThat(topics.deviceEvents()).isEqualTo("gladys.device.events.v1");
-            assertThat(topics.commands()).isEqualTo("gladys.device.commands.v1");
-            assertThat(ctx.getBean(MqttAsyncClient.class).isConnected()).isFalse();
+            assertThat(ctx.getEnvironment().getProperty("bridge.mqtt.telemetry-topic"))
+                    .isEqualTo("gladys/devices/+/telemetry");
+            assertThat(ctx.getEnvironment().getProperty("bridge.topics.telemetry"))
+                    .isEqualTo("gladys.telemetry.raw.v1");
         });
     }
 
@@ -74,16 +46,6 @@ class InfrastructureTest {
                     var consumer = ctx.getBean(ConsumerFactory.class).getConfigurationProperties();
                     assertThat(consumer.get(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG))
                             .isEqualTo(java.util.List.of("broker.example:19092"));
-                });
-    }
-
-    @Test
-    void configuresOptionalCredentials() {
-        context.withPropertyValues("bridge.mqtt.username=bridge-user", "bridge.mqtt.password=test-password")
-                .run(ctx -> {
-                    var options = ctx.getBean(MqttConnectOptions.class);
-                    assertThat(options.getUserName()).isEqualTo("bridge-user");
-                    assertThat(options.getPassword()).containsExactly("test-password".toCharArray());
                 });
     }
 

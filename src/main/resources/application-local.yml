@@ -1,7 +1,8 @@
-# Host application -> local Docker Compose brokers. Environment variables override these.
+# Host broker settings. Client construction does not connect or subscribe.
 spring:
   kafka:
     bootstrap-servers: localhost:9092
 bridge:
   mqtt:
-    broker-uri: tcp://localhost:1883
+    host: localhost
+    port: 1883

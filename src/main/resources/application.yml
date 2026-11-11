@@ -3,6 +3,10 @@ spring:
     name: mqtt-kafka-bridge
   main:
     web-application-type: reactive
+  cloud:
+    stream:
+      function:
+        autodetect: false
   kafka:
     bootstrap-servers: localhost:9092
     admin:
@@ -11,38 +15,17 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
       acks: all
-    consumer:
-      group-id: mqtt-kafka-bridge-commands
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
-      enable-auto-commit: false
-      auto-offset-reset: earliest
-      properties:
-        allow.auto.create.topics: false
-    listener:
-      auto-startup: false
 bridge:
   mqtt:
-    broker-uri: tcp://localhost:1883
-    client-id: mqtt-kafka-bridge
-    username: ${MQTT_USERNAME:}
-    password: ${MQTT_PASSWORD:}
+    host: localhost
+    port: 1883
+    identifier: mqtt-kafka-bridge
     qos: 1
-    connection-timeout: 5s
-    shutdown-timeout: 5s
-    keep-alive: 30s
     telemetry-topic: gladys/devices/+/telemetry
-    device-event-topic: gladys/devices/+/events
-    command-topic-template: gladys/devices/{deviceId}/commands
   topics:
     telemetry: gladys.telemetry.raw.v1
-    device-events: gladys.device.events.v1
-    commands: gladys.device.commands.v1
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-  endpoint:
-    health:
-      show-details: never

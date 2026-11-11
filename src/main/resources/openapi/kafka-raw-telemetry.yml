@@ -1,0 +1,89 @@
+openapi: 3.1.2
+info:
+  title: Gladys Kafka raw telemetry outbound message
+  version: 1.0.0
+  description: Complete MQTT observation transported unchanged to the single raw Kafka topic.
+paths: {}
+components:
+  schemas:
+    TelemetryPayload:
+      $ref: 'mqtt-inbound.yml#/components/schemas/TelemetryPayload'
+    DeviceError:
+      $ref: 'mqtt-inbound.yml#/components/schemas/DeviceError'
+    KafkaRawTelemetry:
+      type: object
+      additionalProperties: false
+      description: |
+        Complete device observation received on the MQTT telemetry topic. The bridge
+        preserves the envelope, device diagnostics and sensor payload in one Kafka
+        record keyed by deviceId. Downstream services resolve soil from sensorId;
+        a device may report readings from different sensors in different soils.
+      required:
+        - schemaVersion
+        - eventId
+        - eventType
+        - deviceId
+        - bootId
+        - sequence
+        - uptimeMs
+        - observedAt
+        - clockSource
+        - mock
+        - batteryLevelPct
+        - errors
+        - payload
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        eventId:
+          type: string
+          format: uuid
+          description: Identity of this observation; preserved across transport retries.
+        eventType:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Sensor observation type, for example SOIL_MOISTURE_READING.
+        deviceId:
+          type: string
+          format: uuid
+          description: Device identity and intended Kafka key.
+        bootId:
+          type: string
+          format: uuid
+          description: Identity of the device boot session.
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Nonnegative sequence within a boot session.
+        uptimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Device uptime in milliseconds at observation.
+        observedAt:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Observation time as Unix epoch milliseconds, not an RFC 3339 string.
+        clockSource:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Clock provenance, for example MANUAL_TEST. No closed vocabulary is established yet.
+        mock:
+          type: boolean
+        batteryLevelPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        errors:
+          type: array
+          description: Device-reported diagnostics; may be empty. The bridge does not interpret them.
+          items:
+            $ref: '#/components/schemas/DeviceError'
+        payload:
+          $ref: '#/components/schemas/TelemetryPayload'

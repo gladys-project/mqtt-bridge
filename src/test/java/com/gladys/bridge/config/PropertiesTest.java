@@ -1,43 +1,43 @@
 package com.gladys.bridge.config;
 
 import java.util.Map;
-import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
-import com.gladys.bridge.config.properties.BridgeProperties;
-import com.gladys.bridge.config.properties.MqttProperties;
+import com.hivemq.client.mqtt.MqttClientState;
+import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
+import com.hivemq.client.mqtt.mqtt5.message.subscribe.Mqtt5Subscribe;
+import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class PropertiesTest {
-    @TestConfiguration(proxyBeanMethods = false)
-    @EnableConfigurationProperties({MqttProperties.class, BridgeProperties.class})
-    static class BindingConfiguration {
-    }
-
     private final ApplicationContextRunner context = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
             .withPropertyValues("spring.config.location=classpath:/application-test.yml")
-            .withUserConfiguration(BindingConfiguration.class);
+            .withUserConfiguration(MqttClientConfig.class);
 
     @Test
-    void bindsValidPropertiesWithoutCredentials() {
+    void configuresIdentifierHostAndPortWithoutConnecting() {
         context.run(ctx -> {
-            assertThat(ctx).hasNotFailed();
-            var mqtt = ctx.getBean(MqttProperties.class);
-            assertThat(mqtt.brokerUri()).isEqualTo("tcp://127.0.0.1:1");
-            assertThat(mqtt.qos()).isEqualTo(1);
-            assertThat(mqtt.connectionTimeout()).isEqualTo(Duration.ofSeconds(5));
-            assertThat(mqtt.username()).isNullOrEmpty();
-            assertThat(ctx.getBean(BridgeProperties.class).topics().telemetry())
-                    .isEqualTo("gladys.telemetry.raw.v1");
+            assertThat(ctx).hasNotFailed().hasSingleBean(Mqtt5AsyncClient.class);
+            var config = ctx.getBean(Mqtt5AsyncClient.class).getConfig();
+            assertThat(config.getClientIdentifier()).hasValueSatisfying(id ->
+                    assertThat(id.toString()).isEqualTo("mqtt-kafka-bridge"));
+            var address = config.getTransportConfig().getServerAddress();
+            assertThat(address.getHostString()).isEqualTo("127.0.0.1");
+            assertThat(address.getPort()).isEqualTo(1);
+            assertThat(config.getState()).isEqualTo(MqttClientState.DISCONNECTED);
         });
     }
 
@@ -45,61 +45,101 @@ class PropertiesTest {
     void bindsEnvironmentStyleOverrides() {
         context.withInitializer(ctx -> ctx.getEnvironment().getPropertySources().addFirst(
                 new SystemEnvironmentPropertySource("systemEnvironment", Map.of(
-                        "BRIDGE_MQTT_BROKERURI", "ssl://broker.example:8883",
-                        "BRIDGE_MQTT_CLIENTID", "test-bridge",
-                        "BRIDGE_MQTT_USERNAME", "test-user",
-                        "BRIDGE_MQTT_PASSWORD", "test-password",
-                        "BRIDGE_MQTT_CONNECTIONTIMEOUT", "7s",
-                        "BRIDGE_TOPICS_TELEMETRY", "custom.telemetry.v1",
-                        "BRIDGE_MQTT_QOS", "2"))))
+                        "BRIDGE_MQTT_IDENTIFIER", "test-bridge",
+                        "BRIDGE_MQTT_HOST", "broker.example",
+                        "BRIDGE_MQTT_PORT", "1884"))))
                 .run(ctx -> {
                     assertThat(ctx).hasNotFailed();
-                    var mqtt = ctx.getBean(MqttProperties.class);
-                    assertThat(mqtt.brokerUri()).isEqualTo("ssl://broker.example:8883");
-                    assertThat(mqtt.clientId()).isEqualTo("test-bridge");
-                    assertThat(mqtt.username()).isEqualTo("test-user");
-                    assertThat(mqtt.password()).isEqualTo("test-password");
-                    assertThat(mqtt.connectionTimeout()).isEqualTo(Duration.ofSeconds(7));
-                    assertThat(ctx.getBean(BridgeProperties.class).topics().telemetry()).isEqualTo("custom.telemetry.v1");
-                    assertThat(mqtt.qos()).isEqualTo(2);
+                    var config = ctx.getBean(Mqtt5AsyncClient.class).getConfig();
+                    assertThat(config.getClientIdentifier()).hasValueSatisfying(id ->
+                            assertThat(id.toString()).isEqualTo("test-bridge"));
+                    var address = config.getTransportConfig().getServerAddress();
+                    assertThat(address.getHostString()).isEqualTo("broker.example");
+                    assertThat(address.getPort()).isEqualTo(1884);
+                    assertThat(config.getState()).isEqualTo(MqttClientState.DISCONNECTED);
                 });
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "bridge.mqtt.broker-uri=http://localhost:1883", "bridge.mqtt.broker-uri=tcp://",
-            "bridge.mqtt.broker-uri=tcp://host:70000", "bridge.mqtt.broker-uri=tcp://user:secret@host:1883",
-            "bridge.mqtt.broker-uri=tcp://host:1883/path", "bridge.mqtt.broker-uri=tcp://host:1883?query=yes",
-            "bridge.mqtt.client-id=", "bridge.mqtt.client-id=   ", "bridge.mqtt.qos=-1", "bridge.mqtt.qos=3",
-            "bridge.mqtt.connection-timeout=0s", "bridge.mqtt.connection-timeout=-1s",
-            "bridge.mqtt.connection-timeout=1ms", "bridge.mqtt.shutdown-timeout=0ms",
-            "bridge.mqtt.shutdown-timeout=-1s", "bridge.mqtt.keep-alive=0s",
-            "bridge.mqtt.telemetry-topic=", "bridge.mqtt.telemetry-topic=gladys/foo+bar/telemetry",
-            "bridge.mqtt.device-event-topic=gladys/#/events", "bridge.mqtt.device-event-topic=",
-            "bridge.mqtt.command-topic-template=gladys/+/commands",
-            "bridge.mqtt.command-topic-template=gladys/devices/commands",
-            "bridge.mqtt.command-topic-template=gladys/{deviceId}/{deviceId}/commands",
-            "bridge.mqtt.command-topic-template=gladys/prefix{deviceId}/commands",
-            "bridge.mqtt.command-topic-template=gladys/{other}/commands",
-            "bridge.topics.telemetry=", "bridge.topics.telemetry=bad/topic",
-            "bridge.topics.device-events=.", "bridge.topics.commands=..", "bridge.topics.commands=bad topic"
-    })
-    void rejectsInvalidConfiguration(String property) {
-        context.withPropertyValues(property).run(ctx -> {
-            assertThat(ctx).hasFailed();
-            assertThat(ctx.getStartupFailure()).hasStackTraceContaining("Binding validation errors");
-        });
-    }
-
-    @Test
-    void rejectsOverlongKafkaTopic() {
-        context.withPropertyValues("bridge.topics.commands=" + "a".repeat(250))
+    @ValueSource(ints = {-1, 65536})
+    void rejectsPortsOutsideTheValidRange(int port) {
+        context.withPropertyValues("bridge.mqtt.port=" + port)
                 .run(ctx -> assertThat(ctx).hasFailed());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"0", "1", "2"})
-    void acceptsAllSupportedQos(String qos) {
-        context.withPropertyValues("bridge.mqtt.qos=" + qos).run(ctx -> assertThat(ctx).hasNotFailed());
+    @Test
+    void connectsTheConfiguredClientOnlyWhenExplicitlyRequested() throws Exception {
+        var client = mock(Mqtt5AsyncClient.class);
+        var acknowledgement = mock(Mqtt5ConnAck.class);
+        when(client.connect()).thenReturn(CompletableFuture.completedFuture(acknowledgement));
+
+        var connection = new MqttClientConfig().connectSubscriber(client);
+
+        assertThat(connection.get(1, TimeUnit.SECONDS)).isSameAs(acknowledgement);
+        verify(client).connect();
     }
+
+    @Test
+    void preservesConnectionFailures() {
+        var client = mock(Mqtt5AsyncClient.class);
+        var failure = new IllegalStateException("Test broker unavailable");
+        when(client.connect()).thenReturn(CompletableFuture.failedFuture(failure));
+
+        var connection = new MqttClientConfig().connectSubscriber(client);
+
+        assertThatThrownBy(() -> connection.get(1, TimeUnit.SECONDS))
+                .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                .hasCause(failure);
+    }
+
+    @Test
+    void configuresTelemetryTopicAndQosFromYaml() {
+        context.run(ctx -> {
+            assertThat(ctx).hasNotFailed().hasSingleBean(Mqtt5Subscribe.class);
+            var subscription = ctx.getBean(Mqtt5Subscribe.class).getSubscriptions();
+            assertThat(subscription).hasSize(1);
+            assertThat(subscription.getFirst().getTopicFilter().toString()).isEqualTo("gladys/devices/+/telemetry");
+            assertThat(subscription.getFirst().getQos().getCode()).isEqualTo(1);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void acceptsEachSupportedSubscriptionQos(int qos) {
+        context.withPropertyValues("bridge.mqtt.qos=" + qos).run(ctx -> {
+            assertThat(ctx).hasNotFailed();
+            assertThat(ctx.getBean(Mqtt5Subscribe.class).getSubscriptions().getFirst().getQos().getCode())
+                    .isEqualTo(qos);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 3})
+    void rejectsUnsupportedSubscriptionQos(int qos) {
+        context.withPropertyValues("bridge.mqtt.qos=" + qos).run(ctx -> {
+            assertThat(ctx).hasFailed();
+            assertThat(ctx.getStartupFailure()).hasStackTraceContaining("MQTT QoS must be 0, 1 or 2");
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "gladys/foo+bar/telemetry", "gladys/#/telemetry"})
+    void rejectsInvalidSubscriptionTopicFilters(String topic) {
+        context.withPropertyValues("bridge.mqtt.telemetry-topic=" + topic)
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    void appliesEnvironmentOverridesToSubscriptionTopicAndQos() {
+        context.withInitializer(ctx -> ctx.getEnvironment().getPropertySources().addFirst(
+                new SystemEnvironmentPropertySource("systemEnvironment", Map.of(
+                        "BRIDGE_MQTT_TELEMETRYTOPIC", "custom/sensors/+/readings",
+                        "BRIDGE_MQTT_QOS", "2"))))
+                .run(ctx -> {
+                    var subscription = ctx.getBean(Mqtt5Subscribe.class).getSubscriptions().getFirst();
+                    assertThat(subscription.getTopicFilter().toString()).isEqualTo("custom/sensors/+/readings");
+                    assertThat(subscription.getQos().getCode()).isEqualTo(2);
+                });
+    }
+
 }

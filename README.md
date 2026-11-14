@@ -213,15 +213,17 @@ The JAR retains the version declared in `pom.xml`. Existing releases/assets are 
 
 ### Server deployment setup and manual runs
 
-The deployment job must run on the self-hosted runner connected to the **server's** Docker daemon. The workflow installs Compose inside the runner; provide the plugin separately on the server if you also use Compose directly from its shell. Keep `/etc/gladys/gladys.env` readable by the runner, and create the external `gladys` network and start the independently managed brokers first. Deployment neither starts nor stops Kafka/Mosquitto. The Compose project name is fixed to `mqtt-kafka-bridge`, matching the root stack; use that project name for server maintenance commands too.
+The deployment job must run on the self-hosted runner connected to the **server's** Docker daemon. The workflow installs Compose inside the runner; provide the plugin separately on the server if you also use Compose directly from its shell. Create `/etc/gladys/gladys.env` on that Docker host, create the external `gladys` network and start the independently managed brokers first. Deployment neither starts nor stops Kafka/Mosquitto. The Compose project name is fixed to `mqtt-kafka-bridge`, matching the root stack; use that project name for server maintenance commands too.
 
-For the containerized `github-runner`, retain the Docker socket mount and add this mount when recreating its container:
+For a containerized `github-runner`, retain the Docker socket mount. If the shared env file is not readable inside the runner, deployment reads it from the Docker host through a temporary container using the same digest-pinned Temurin image as the service. Its file mount is read-only, networking and container logging are disabled, and the temporary runner copy is private and removed on exit. The host file can stay owned by root with mode 600. A missing host file still fails deployment before the service is updated; no default credentials are substituted.
+
+Alternatively, expose it directly to the runner with this optional mount:
 
 ```bash
 --mount type=bind,src=/etc/gladys,dst=/etc/gladys,readonly
 ```
 
-With mode 600, the shared file's owner must match the runner's numeric UID (`docker exec github-runner id -u`), and the runner needs permission to traverse `/etc/gladys`. Confirm access with `docker exec github-runner test -r /etc/gladys/gladys.env`. The workflow reads this existing file; it never copies it into the checkout, image or artifacts. An optional GitHub repository/environment variable `GLADYS_ENV_FILE` overrides its path; that path must be readable inside the runner. The server file still supplies only the explicitly selected bridge settings to the container. Deployment fails before building if the file is missing or unreadable.
+For direct access with mode 600, the shared file's owner must match the runner's numeric UID (`docker exec github-runner id -u`), and the runner needs permission to traverse `/etc/gladys`. Confirm direct access with `docker exec github-runner test -r /etc/gladys/gladys.env`. An optional GitHub repository/environment variable `GLADYS_ENV_FILE` overrides its path; use an absolute host path for the Docker fallback. The workflow never copies the file into the checkout, image or artifacts. Only the explicitly selected bridge settings reach the service container. Run deployment orchestration regression checks without Docker with `python3 .github/tests/test_deploy.py`.
 
 Merge the deployment workflow into the default branch once to enable manual dispatch. Then use **Actions → Deploy bridge → Run workflow → Branch** to choose a branch, or run this from a checkout authenticated with GitHub CLI (replace the example branch):
 

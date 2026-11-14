@@ -18,6 +18,8 @@
 .env.*
 !.env.example
 /gladys.env
+/local/arduino/
+__pycache__/
 
 # Logs and JVM crash dumps
 /logs/

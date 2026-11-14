@@ -5,10 +5,20 @@ services:
     image: ${BRIDGE_IMAGE:-mqtt-kafka-bridge:local}
     build:
       context: .
-    env_file:
-      - ${BRIDGE_ENV_FILE:-.env}
+    # Load one shared server file with docker compose --env-file /etc/gladys/gladys.env.
+    # Forward only the settings this service uses.
     environment:
       SERVER_PORT: "8080"
+      SPRING_KAFKA_BOOTSTRAPSERVERS: ${SPRING_KAFKA_BOOTSTRAPSERVERS:-kafka:29092}
+      SPRING_KAFKA_SECURITY_PROTOCOL:
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM:
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG:
+      BRIDGE_MQTT_IDENTIFIER: ${BRIDGE_MQTT_IDENTIFIER:-mqtt-kafka-bridge}
+      BRIDGE_MQTT_HOST: ${BRIDGE_MQTT_HOST:-mosquitto}
+      BRIDGE_MQTT_PORT: ${BRIDGE_MQTT_PORT:-1883}
+      BRIDGE_MQTT_QOS: ${BRIDGE_MQTT_QOS:-1}
+      BRIDGE_MQTT_TELEMETRYTOPIC: ${BRIDGE_MQTT_TELEMETRYTOPIC:-gladys/devices/+/telemetry}
+      BRIDGE_TOPICS_TELEMETRY: ${BRIDGE_TOPICS_TELEMETRY:-gladys.telemetry.raw.v1}
     ports:
       - "127.0.0.1:${BRIDGE_HTTP_PORT:-8080}:8080"
     networks: [gladys]

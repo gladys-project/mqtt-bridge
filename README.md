@@ -85,30 +85,57 @@ docker compose -f infra/compose.yml exec kafka /opt/kafka/bin/kafka-topics.sh --
 
 Host ports can be changed with `KAFKA_HOST_PORT`, `MQTT_HOST_PORT` and `BRIDGE_HTTP_PORT`. The application container always listens on 8080. `BRIDGE_IMAGE` optionally selects its image name. If Docker Desktop is unavailable but the system daemon works, use `docker --context default compose ...` and `DOCKER_HOST=unix:///var/run/docker.sock ./mvnw verify`.
 
-## Server environment file
+## Deploying the Mosquitto configuration
 
-Keep the real server environment outside the checkout at **`/etc/gladys/mqtt-kafka-bridge.env`**, readable only by its deployment operator. For a root-managed deployment:
+Copy `infra/compose.yml` together with `infra/mosquitto/mosquitto.conf`, preserving that relative layout. Bind paths resolve beside the Compose file. If you deploy the broker Compose file as `/home/franek/gladys/compose.yml`, the default configuration must be a **regular file** at `/home/franek/gladys/mosquitto/mosquitto.conf`.
+
+The mount is read-only. Ensure the source file exists before starting Mosquitto: Compose's short bind syntax can create a directory when the source is missing. If an earlier startup already created an empty directory named `mosquitto.conf`, remove only that empty directory with `rmdir`, then transfer the real config file. A nonempty directory should be inspected rather than deleted.
+
+## One shared server environment file
+
+Keep one general Gladys file at **`/etc/gladys/gladys.env`**, outside the checkout, and reuse it for all application and infrastructure Compose stacks. A local `gladys.env` can be prepared for manual server transfer; it is ignored by Git and should have mode 600. The prepared values assume the supplied shared Docker network. Preserve any existing server settings when transferring updates. Create the server file once; edit that same file for subsequent deployments:
 
 ```bash
 sudo install -d -m 750 /etc/gladys
-# Create this file once from the placeholder example, then replace every placeholder:
-sudo install -m 600 .env.example /etc/gladys/mqtt-kafka-bridge.env
-sudoedit /etc/gladys/mqtt-kafka-bridge.env
+sudo touch /etc/gladys/gladys.env
+sudo chmod 600 /etc/gladys/gladys.env
+sudoedit /etc/gladys/gladys.env
 ```
 
-Do not overwrite an existing server env file during subsequent deployments. For brokers on the same shared Docker network, use `kafka:29092` and `mosquitto:1883` as above; for separately hosted brokers, use their reachable hostnames and advertised Kafka ports. Keep a unique MQTT identifier per instance.
+For the supplied Docker network, its bridge-related settings can be:
 
-Assuming the project and verified JAR are deployed under `/opt/gladys/mqtt-kafka-bridge`, start only this service:
+```dotenv
+# Shared infrastructure
+GLADYS_NETWORK=gladys
+SPRING_KAFKA_BOOTSTRAPSERVERS=kafka:29092
+
+# MQTT/Kafka bridge
+BRIDGE_MQTT_HOST=mosquitto
+BRIDGE_MQTT_PORT=1883
+BRIDGE_MQTT_IDENTIFIER=mqtt-kafka-bridge
+BRIDGE_MQTT_QOS=1
+BRIDGE_MQTT_TELEMETRYTOPIC=gladys/devices/+/telemetry
+BRIDGE_TOPICS_TELEMETRY=gladys.telemetry.raw.v1
+BRIDGE_HTTP_PORT=8080
+
+# Append other applications' settings here, with their own prefixes.
+```
+
+Use the same file with both stacks (replace the deployment directory if different):
 
 ```bash
-sudo env BRIDGE_ENV_FILE=/etc/gladys/mqtt-kafka-bridge.env \
-  docker compose --env-file /etc/gladys/mqtt-kafka-bridge.env \
+sudo docker compose --env-file /etc/gladys/gladys.env \
+  -f /opt/gladys/mqtt-kafka-bridge/infra/compose.yml up -d --wait
+
+sudo docker compose --env-file /etc/gladys/gladys.env \
   -f /opt/gladys/mqtt-kafka-bridge/compose.yml up -d --build
 ```
 
-`BRIDGE_ENV_FILE` selects the file used by the service's `env_file`, which passes its values to the JVM. The CLI `--env-file` also supplies Compose interpolation values such as `GLADYS_NETWORK` or `BRIDGE_HTTP_PORT`. For local development the default service env file is `.env` beside `compose.yml`. Spring Boot does not itself load either file. See Docker's [container environment configuration](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/) and [external network guidance](https://docs.docker.com/compose/how-tos/networking/).
+Create the external `gladys` network once before starting the stacks. A verified JAR must be present in `target/` before building the application image. For separately hosted brokers, use their reachable hostnames and advertised Kafka ports; keep a unique MQTT identifier per instance.
 
-Create/join the selected external network before startup; brokers do not have to be in the service's Compose project. This command builds from the deployed verified JAR; it does not download a release or start broker infrastructure. Only health/info are exposed, with HTTP bound to server loopback by default.
+`--env-file` supplies Compose interpolation values. Each service should explicitly map only its own environment settings. The bridge Compose file lists the client, topic and supported Kafka-security variables it forwards, so unrelated applications' variables stay outside the bridge container. Infrastructure settings such as `GLADYS_NETWORK` and host ports are consumed by Compose. See Docker's [shared-file/interpolation guidance](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+
+No `BRIDGE_ENV_FILE` variable or per-service env file is needed. For local development, an ignored `.env` beside `compose.yml` remains the default interpolation file. Spring Boot receives the selected variables from Compose; it does not read the shared file directly. Use this shared-file option for later `down`, `logs` or other Compose commands too, so the same names and settings resolve consistently.
 
 ## Configuration
 
@@ -129,7 +156,7 @@ Standard Kafka broker/security/client settings stay under `spring.kafka.*`; exam
 
 Obsolete Cloud Stream function definitions/bindings and unused MQTT credentials/timeouts were removed. The existing Stream dependency remains installed, with function autodetection disabled; the processor uses KafkaTemplate directly. Production YAML has no Kafka consumer/listener settings because this bridge publishes to Kafka. Test-only consumer settings stay in `application-test.yml`. Current MQTT connection settings support anonymous local access; authentication/TLS lifecycle configuration requires a later implementation.
 
-`.env.example` contains placeholders only. Spring Boot does not automatically load `.env`, and Compose does not export it to a host JVM. Copy to ignored `.env`, replace placeholders, quote shell-sensitive values, remove unused optional variables, then explicitly export a file you control:
+`.env.example` contains placeholders only. On the server, merge the needed values into the single shared file above. For a host-run JVM, explicitly export your application settings because Spring Boot does not automatically load env files:
 
 ```bash
 set -a
@@ -167,7 +194,8 @@ MQTT QoS applies to the MQTT leg. Kafka forwarding is asynchronous and does not 
 
 GitHub Actions workflows live under [.github/workflows](.github/workflows/):
 
-- **CI** runs on branch pushes, pull requests and manual dispatch. It sets up Temurin Java 25, caches Maven dependencies, requires Docker, runs `./mvnw --batch-mode --no-transfer-progress clean verify`, validates both Compose files and builds the service image. Test reports are retained for 7 days and the verified executable JAR for 14 days. It is also callable by the release workflow.
+- **CI** runs on branch pushes, pull requests and manual dispatch. It sets up Temurin Java 25, caches Maven dependencies, requires Docker, runs `./mvnw --batch-mode --no-transfer-progress clean verify`, validates both Compose files and builds the service image. Test reports are retained for 7 days and the verified executable JAR for 14 days. It is also callable by the deployment and release workflows.
+- **Deploy bridge** runs automatically only after a pull request is merged into `main`, or manually for a selected branch. Closing an unmerged PR, a branch push or a tag push does not deploy. It first calls CI, downloads the verified JAR for the exact commit, builds `mqtt-kafka-bridge:<commit-sha>` on the server's Docker daemon and updates only the root Compose service. Deployment uses the `production` GitHub environment and one concurrency group across all branches; a running deployment is never cancelled by a newer request. Manual branch deployments replace the same server service.
 - **Release** runs for pushed `v*` tags, calls the same verification workflow, downloads its exact JAR artifact and creates a GitHub Release with that artifact and generated notes. Publication gets `contents: write` only in the publish job; test/build jobs have read-only repository access. No additional secret is required beyond the workflow's GitHub token.
 
 CI uses the selected **self-hosted** runner. Provide a Linux runner with a current GitHub Actions runner service (Node 24 action support), Docker daemon access, Git, a shell and outbound access for Java/Maven/image downloads. Java is provisioned by setup-java; Maven comes from the wrapper. The release publication job also uses `self-hosted` and requires GitHub CLI (`gh`) on its PATH. Configure runner access and workflow permissions in the repository settings as appropriate for that runner.
@@ -181,7 +209,29 @@ git tag v0.0.1
 git push origin v0.0.1
 ```
 
-The JAR retains the version declared in `pom.xml`. Existing releases/assets are not overwritten automatically. CD delivers a verified JAR to GitHub Releases. Container deployment uses the root Compose file and server env file described above; no automatic server deployment or container registry publication is configured.
+The JAR retains the version declared in `pom.xml`. Existing releases/assets are not overwritten automatically. Tag releases publish a JAR independently of container deployment; no container registry is required.
+
+### Server deployment setup and manual runs
+
+The deployment job must run on the self-hosted runner connected to the **server's** Docker daemon. Install the Docker Compose plugin there. Keep `/etc/gladys/gladys.env` readable by the runner, and create the external `gladys` network and start the independently managed brokers first. Deployment neither starts nor stops Kafka/Mosquitto. The Compose project name is fixed to `mqtt-kafka-bridge`, matching the root stack; use that project name for server maintenance commands too.
+
+For the containerized `github-runner`, retain the Docker socket mount and add this mount when recreating its container:
+
+```bash
+--mount type=bind,src=/etc/gladys,dst=/etc/gladys,readonly
+```
+
+With mode 600, the shared file's owner must match the runner's numeric UID (`docker exec github-runner id -u`), and the runner needs permission to traverse `/etc/gladys`. Confirm access with `docker exec github-runner test -r /etc/gladys/gladys.env`. The workflow reads this existing file; it never copies it into the checkout, image or artifacts. An optional GitHub repository/environment variable `GLADYS_ENV_FILE` overrides its path; that path must be readable inside the runner. The server file still supplies only the explicitly selected bridge settings to the container. Deployment fails before building if the file is missing or unreadable.
+
+Merge the deployment workflow into the default branch once to enable manual dispatch. Then use **Actions → Deploy bridge → Run workflow → Branch** to choose a branch, or run this from a checkout authenticated with GitHub CLI (replace the example branch):
+
+```bash
+gh workflow run deploy.yml --ref feat/mqtt-kafka-bridge-foundation
+```
+
+The selected branch must contain the deployment workflow and reusable CI workflow. Verification failures prevent deployment. The Compose update has a 60-second bound and waits for the container to be running; there is currently no container healthcheck, so this is not an HTTP readiness assertion. Check `/actuator/health` through the server's configured loopback HTTP port after deployment. No automatic rollback is configured. Optional `production` environment protection rules must allow any branches you intend to deploy manually.
+
+Trigger behavior follows GitHub's [merged-PR event guidance](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#running-your-pull_request-workflow-when-a-pull-request-merges) and [manual workflow/branch selection](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
 ## Pinned versions and compatibility
 

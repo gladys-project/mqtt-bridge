@@ -39,11 +39,9 @@ jobs:
       - name: Build and verify
         run: ./mvnw --batch-mode --no-transfer-progress clean verify
       - name: Validate separate Compose stacks
-        env:
-          BRIDGE_ENV_FILE: .env.example
         run: |
-          docker compose config --quiet
-          docker compose -f infra/compose.yml config --quiet
+          docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example -f infra/compose.yml config --quiet
       - name: Build service image
         run: docker build --tag mqtt-kafka-bridge:ci .
       - name: Upload test reports

@@ -17,6 +17,7 @@
 .env
 .env.*
 !.env.example
+/gladys.env
 
 # Logs and JVM crash dumps
 /logs/

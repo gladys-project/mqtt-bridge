@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: mqtt-kafka-bridge
+  main:
+    web-application-type: reactive
+  cloud:
+    stream:
+      function:
+        autodetect: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin:
+      auto-create: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+bridge:
+  mqtt:
+    host: localhost
+    port: 1883
+    identifier: mqtt-kafka-bridge
+    qos: 1
+    telemetry-topic: gladys/devices/+/telemetry
+  topics:
+    telemetry: gladys.telemetry.raw.v1
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,8 @@
+# Host broker settings. Client construction does not connect or subscribe.
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+bridge:
+  mqtt:
+    host: localhost
+    port: 1883

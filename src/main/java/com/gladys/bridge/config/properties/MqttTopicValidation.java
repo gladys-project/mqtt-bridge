@@ -1,0 +1,33 @@
+package com.gladys.bridge.config.properties;
+
+import java.nio.charset.StandardCharsets;
+
+import com.hivemq.client.mqtt.datatypes.MqttTopic;
+import com.hivemq.client.mqtt.datatypes.MqttTopicFilter;
+
+final class MqttTopicValidation {
+    private MqttTopicValidation() {
+    }
+
+    static boolean isUtf8String(String value) {
+        return value != null && !value.isEmpty() && value.indexOf('\0') < 0
+                && StandardCharsets.UTF_8.newEncoder().canEncode(value)
+                && value.getBytes(StandardCharsets.UTF_8).length <= 65535;
+    }
+
+    static boolean isTopic(String value, boolean filter) {
+        if (!isUtf8String(value) || value.isBlank()) {
+            return false;
+        }
+        try {
+            if (filter) {
+                MqttTopicFilter.of(value);
+            } else {
+                MqttTopic.of(value);
+            }
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+}

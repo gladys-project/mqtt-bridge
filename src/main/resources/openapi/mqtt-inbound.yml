@@ -1,0 +1,126 @@
+openapi: 3.1.2
+info:
+  title: Gladys MQTT inbound messages
+  version: 1.0.0
+  description: Device observation received over MQTT, containing device data and raw telemetry.
+paths: {}
+components:
+  schemas:
+    MqttTelemetryMessage:
+      type: object
+      additionalProperties: false
+      description: |
+        Complete device observation received on the MQTT telemetry topic. The bridge
+        preserves the envelope, device diagnostics and sensor payload in one Kafka
+        record keyed by deviceId. Downstream services resolve soil from sensorId;
+        a device may report readings from different sensors in different soils.
+      required:
+        - schemaVersion
+        - eventId
+        - eventType
+        - deviceId
+        - bootId
+        - sequence
+        - uptimeMs
+        - observedAt
+        - clockSource
+        - mock
+        - batteryLevelPct
+        - errors
+        - payload
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        eventId:
+          type: string
+          format: uuid
+          description: Identity of this observation; preserved across transport retries.
+        eventType:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Sensor observation type, for example SOIL_MOISTURE_READING.
+        deviceId:
+          type: string
+          format: uuid
+          description: Device identity and intended Kafka key.
+        bootId:
+          type: string
+          format: uuid
+          description: Identity of the device boot session.
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Nonnegative sequence within a boot session.
+        uptimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Device uptime in milliseconds at observation.
+        observedAt:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          description: Observation time as Unix epoch milliseconds, not an RFC 3339 string.
+        clockSource:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Clock provenance, for example MANUAL_TEST. No closed vocabulary is established yet.
+        mock:
+          type: boolean
+        batteryLevelPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        errors:
+          type: array
+          description: Device-reported diagnostics; may be empty. The bridge does not interpret them.
+          items:
+            $ref: '#/components/schemas/DeviceError'
+        payload:
+          $ref: '#/components/schemas/TelemetryPayload'
+    TelemetryPayload:
+      type: object
+      additionalProperties: true
+      description: |
+        Sensor-specific reading. sensorId identifies the sensor; downstream services
+        resolve its soil and calibration context. Measurement fields are preserved
+        without interpretation, supporting different sensor types and soils.
+        For moisture, rawMoisture is an ADC count, not a percentage.
+      required: [sensorId]
+      properties:
+        sensorId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+        plantId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+        calibrationId:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'
+    DeviceError:
+      type: object
+      additionalProperties: false
+      required: [code, component, severity, message]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        component:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+          description: Initial v1 diagnostic severity vocabulary.
+        message:
+          type: string
+          minLength: 1
+          pattern: '[\s\S]*\S[\s\S]*'

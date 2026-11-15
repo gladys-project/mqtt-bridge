@@ -1,7 +1,11 @@
 package com.gladys.bridge.config;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import com.gladys.bridge.event.TelemetryReadingProcessor;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5Client;
@@ -9,8 +13,11 @@ import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.Mqtt5Subscribe;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 @Slf4j
 @Configuration(proxyBeanMethods = false)
@@ -46,6 +53,31 @@ public class MqttClientConfig {
                 log.error("Failed to connect to MQTT", failure);
             }
         });
+    }
+
+    @Bean
+    @Profile("deployed")
+    public ApplicationRunner startBridge(Mqtt5AsyncClient client,
+            TelemetryReadingProcessor processor) {
+        return args -> connectSubscriber(client)
+                .thenCompose(mqtt5ConnAck -> processor.subscribe());
+    }
+
+    @Bean
+    public DisposableBean mqttShutdown(Mqtt5AsyncClient client) {
+        return () -> {
+            if (!client.getState().isConnected()) {
+                return;
+            }
+            try {
+                client.disconnect().get(3, TimeUnit.SECONDS);
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                log.warn("Interrupted while disconnecting MQTT", failure);
+            } catch (ExecutionException | TimeoutException | RuntimeException failure) {
+                log.warn("Failed to disconnect MQTT within the shutdown limit", failure);
+            }
+        };
     }
 
 }

@@ -3,6 +3,7 @@ package com.gladys.bridge.event;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.Map;
 
 import com.gladys.bridge.mapping.MqttToKafkaMapper;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
@@ -14,10 +15,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.kafka.core.KafkaTemplate;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -39,6 +47,48 @@ class TelemetryReadingProcessorTest {
             .topicFilter("custom/devices/+/readings").qos(MqttQos.AT_LEAST_ONCE).build();
     private final TelemetryReadingProcessor processor = new TelemetryReadingProcessor(mqtt, kafka, json,
             Mappers.getMapper(MqttToKafkaMapper.class), subscription, "custom.raw.telemetry");
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void springWiresEnvironmentConfiguredOutboundTopicIntoTheSend() throws Exception {
+        byte[] original;
+        try (var input = new ClassPathResource("openapi/examples/soil-moisture-reading.json").getInputStream()) {
+            original = input.readAllBytes();
+        }
+        new ApplicationContextRunner()
+                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withPropertyValues("spring.config.location=classpath:/application.yml")
+                .withInitializer(ctx -> ctx.getEnvironment().getPropertySources().addFirst(
+                        new SystemEnvironmentPropertySource("systemEnvironment",
+                                Map.of("BRIDGE_TOPICS_TELEMETRY", "environment.telemetry.raw"))))
+                .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
+                .withBean(Mqtt5AsyncClient.class, () -> mqtt)
+                .withBean(KafkaTemplate.class, () -> kafka)
+                .withBean(ObjectMapper.class, () -> json)
+                .withBean(MqttToKafkaMapper.class, () -> Mappers.getMapper(MqttToKafkaMapper.class))
+                .withBean(Mqtt5Subscribe.class, () -> subscription)
+                .withUserConfiguration(TelemetryReadingProcessor.class)
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    verifyNoInteractions(mqtt);
+                    verify(kafka, never()).send(any(String.class), any(String.class), any(byte[].class));
+                    when(mqtt.subscribe(eq(subscription), any()))
+                            .thenReturn(CompletableFuture.completedFuture(mock(Mqtt5SubAck.class)));
+                    when(kafka.send(eq("environment.telemetry.raw"), any(String.class), any(byte[].class)))
+                            .thenReturn(CompletableFuture.completedFuture(null));
+
+                    ctx.getBean(TelemetryReadingProcessor.class).subscribe();
+                    ArgumentCaptor<Consumer<Mqtt5Publish>> callback = ArgumentCaptor.forClass((Class) Consumer.class);
+                    verify(mqtt).subscribe(eq(subscription), callback.capture());
+                    callback.getValue().accept(Mqtt5Publish.builder()
+                            .topic("custom/devices/test/readings").payload(original).build());
+
+                    var payload = ArgumentCaptor.forClass(byte[].class);
+                    verify(kafka).send(eq("environment.telemetry.raw"),
+                            eq("550e8400-e29b-41d4-a716-446655440000"), payload.capture());
+                    assertThat(json.readTree(payload.getValue())).isEqualTo(json.readTree(original));
+                });
+    }
 
     @Test
     void subscribesExplicitlyAndCompletesOnlyAfterSuback() throws Exception {

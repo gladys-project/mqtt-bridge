@@ -3,6 +3,7 @@ package com.gladys.bridge;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.gladys.bridge.config.MqttClientConfig;
@@ -13,6 +14,7 @@ import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5Publish;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.Mqtt5Subscribe;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAckReasonCode;
+import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -40,6 +43,8 @@ import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
@@ -95,8 +100,22 @@ class MqttKafkaFlowIT {
             var partition = new TopicPartition(kafkaTopic, 0);
             consumer.assign(List.of(partition));
             consumer.seekToBeginning(List.of(partition));
-            mqttConfig.connectSubscriber(mqtt).get(10, TimeUnit.SECONDS);
-            var suback = processor.subscribe().get(10, TimeUnit.SECONDS);
+            var subscriptionComplete = new CompletableFuture<Mqtt5SubAck>();
+            var observedProcessor = spy(processor);
+            doAnswer(invocation -> {
+                @SuppressWarnings("unchecked")
+                var result = (CompletableFuture<Mqtt5SubAck>) invocation.callRealMethod();
+                result.whenComplete((ack, failure) -> {
+                    if (failure == null) {
+                        subscriptionComplete.complete(ack);
+                    } else {
+                        subscriptionComplete.completeExceptionally(failure);
+                    }
+                });
+                return result;
+            }).when(observedProcessor).subscribe();
+            mqttConfig.startBridge(mqtt, observedProcessor).run(new DefaultApplicationArguments());
+            var suback = subscriptionComplete.get(10, TimeUnit.SECONDS);
             assertThat(suback.getReasonCodes()).containsExactly(Mqtt5SubAckReasonCode.GRANTED_QOS_2);
 
             byte[] original;
@@ -117,9 +136,7 @@ class MqttKafkaFlowIT {
             assertThat(json.readTree(records.getFirst().value())).isEqualTo(json.readTree(original));
         } finally {
             consumer.close(Duration.ofSeconds(3));
-            if (mqtt.getState().isConnected()) {
-                mqtt.disconnect().get(3, TimeUnit.SECONDS);
-            }
+            mqttConfig.mqttShutdown(mqtt).destroy();
         }
         assertThat(mqtt.getState()).isEqualTo(MqttClientState.DISCONNECTED);
     }

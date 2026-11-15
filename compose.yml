@@ -8,6 +8,7 @@ services:
     # Load one shared server file with docker compose --env-file /etc/gladys/gladys.env.
     # Forward only the settings this service uses.
     environment:
+      SPRING_PROFILES_ACTIVE: deployed
       SERVER_PORT: "8080"
       SPRING_KAFKA_BOOTSTRAPSERVERS: ${SPRING_KAFKA_BOOTSTRAPSERVERS:-kafka:29092}
       SPRING_KAFKA_SECURITY_PROTOCOL:

@@ -1,6 +1,6 @@
 # mqtt-kafka-bridge
 
-Gladys MQTT/Kafka transport foundation with generated message contracts and mapper, a configured HiveMQ MQTT 5 client, and an explicit telemetry processor. `MqttClientConfig` owns identifier/host/port and the validated subscription topic/QoS. The processor receives its client, mapper and Kafka destination through constructor injection. It converts each MQTT observation into one complete JSON Kafka record keyed by deviceId. Application startup stays disconnected; connection and subscription are explicit operations.
+Gladys MQTT/Kafka transport foundation with generated message contracts and mapper, a configured HiveMQ MQTT 5 client, and an explicit telemetry processor. `MqttClientConfig` owns identifier/host/port and the validated subscription topic/QoS. The processor receives its client, mapper and Kafka destination through constructor injection. It converts each MQTT observation into one complete JSON Kafka record keyed by deviceId. Default/local startup stays disconnected. The `deployed` profile connects and subscribes asynchronously through an `ApplicationRunner`; the service Compose file selects this profile.
 
 The intended architecture is Arduino → MQTT → bridge → **one Kafka raw telemetry topic**. Separate downstream Device Processor and Telemetry Processor applications consume that topic with different consumer groups and produce their own outputs. They own device handling, notifications, calibration and watering logic. Soil is resolved downstream from `sensorId`; a device can report multiple sensors in different soils. No `soilId` is required.
 
@@ -51,8 +51,10 @@ For a **host-run application**, the local profile uses `localhost:9092` and `loc
 
 ```bash
 ./mvnw test
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local,deployed
 ```
+
+Omit `deployed` to start the web application without connecting to brokers.
 
 For the **application container**, create an ignored `.env` beside the root `compose.yml` from `.env.example` if it does not exist, replace the placeholders, and use these values for the supplied broker stack:
 
@@ -73,7 +75,7 @@ curl --fail --retry 20 --retry-connrefused --retry-delay 1 http://localhost:8080
 
 The [Dockerfile](Dockerfile) uses a digest-pinned Temurin Java 25 JRE and runs as UID/GID 10001. It copies an already-built JAR; Maven is not installed in the runtime image. The [.dockerignore](.dockerignore) allows only the Dockerfile and executable JAR into the build context, excluding environment files and Git data. A release JAR can instead be placed at `target/mqtt-kafka-bridge-<version>.jar` before building; keep only one matching JAR there.
 
-The root stack has no broker services or `depends_on` entries. `docker compose down` stops only this application. Stop the independent development brokers with `docker compose -f infra/compose.yml down`. The shared network remains in place. Application startup stays disconnected; connection/subscription behavior remains explicit.
+The root stack has no broker services or `depends_on` entries. `docker compose down` stops only this application. Stop the independent development brokers with `docker compose -f infra/compose.yml down`. The shared network remains in place. Compose selects the `deployed` profile and starts the MQTT connection/subscription chain. Default/local JVM startup stays offline.
 
 Kafka advertises `localhost:9092` for host clients and `kafka:29092` for containers on the shared network. Mosquitto uses `localhost:1883` from the host and `mosquitto:1883` from containers. `localhost` inside the bridge container refers to that container, so use broker service names there. Kafka's internal advertised address must be reachable from the bridge. Other independently managed brokers can be selected through the environment values.
 
@@ -151,6 +153,7 @@ Shared defaults are in `application.yml`, local addresses in `application-local.
 | `BRIDGE_TOPICS_TELEMETRY` | `gladys.telemetry.raw.v1`, intended Kafka output |
 | `BRIDGE_MQTT_QOS` | `1`; accepts 0, 1, 2 |
 | `SERVER_PORT` | `8080` |
+| `SPRING_PROFILES_ACTIVE` | Unset by default; Compose sets `deployed` to start MQTT forwarding |
 
 Standard Kafka broker/security/client settings stay under `spring.kafka.*`; examples include `SPRING_KAFKA_SECURITY_PROTOCOL`, `SPRING_KAFKA_PROPERTIES_SASL_MECHANISM` and `SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG`. Boot supplies producer/consumer factories and `KafkaTemplate`, with string keys and byte values. There is no active Kafka consumer/listener. Kafka provisioning stays disabled.
 
@@ -162,8 +165,10 @@ Obsolete Cloud Stream function definitions/bindings and unused MQTT credentials/
 set -a
 . ./.env
 set +a
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local,deployed
 ```
+
+Omit `deployed` to start the web application without connecting to brokers.
 
 Keep secrets out of Git/logs. Lombok remains compile-time only; SLF4J uses Boot's default Logback backend.
 
@@ -171,14 +176,14 @@ Keep secrets out of Git/logs. Lombok remains compile-time only; SLF4J uses Boot'
 
 The subscription request is a `Mqtt5Subscribe` bean built from `bridge.mqtt.telemetry-topic` and `bridge.mqtt.qos`. QoS defaults to `1` (`AT_LEAST_ONCE`); only `0`, `1`, `2` are accepted. Invalid MQTT filters fail configuration. Kafka output uses `bridge.topics.telemetry`. Override them through `BRIDGE_MQTT_QOS`, `BRIDGE_MQTT_TELEMETRYTOPIC` and `BRIDGE_TOPICS_TELEMETRY`.
 
-Connect first, then explicitly subscribe; the returned future completes with SUBACK:
+The `deployed` startup runner connects first and subscribes after CONNACK. Client bean creation itself performs no broker operations. Outside that profile, callers can explicitly use the same sequence; the returned future completes with SUBACK:
 
 ```java
 mqttClientConfig.connectSubscriber(mqttClient)
         .thenCompose(connAck -> telemetryReadingProcessor.subscribe());
 ```
 
-The processor uses KafkaTemplate with string device ID keys and JSON byte values, matching the configured serializers. It decodes UTF-8 JSON directly from MQTT bytes, maps the entire observation, and observes asynchronous send failures. Invalid JSON is logged and not sent. The caller owns connection/disconnection; no startup hook or Cloud function automatically starts the subscription. The Cloud function declarations remain inactive and are separate from this explicit KafkaTemplate path.
+The processor uses KafkaTemplate with string device ID keys and JSON byte values, matching the configured serializers. Its constructor receives the outbound destination from `bridge.topics.telemetry` (`BRIDGE_TOPICS_TELEMETRY` in the environment), defaulting to `gladys.telemetry.raw.v1`; the downstream device processor publishes to `gladys.device.data.v1`. It decodes UTF-8 JSON directly from MQTT bytes, maps the entire observation, and observes asynchronous send failures. Invalid JSON is logged and not sent. The `deployed` runner starts this sequence without blocking application startup. Connection/subscription failures are logged; there is no automatic retry, and HTTP health does not confirm that MQTT is subscribed. On context shutdown, a connected client is disconnected with a three-second wait limit. The shutdown wait runs outside request/event paths. Cloud function autodetection remains disabled; forwarding uses KafkaTemplate directly.
 
 ```bash
 ./mvnw test          # Fast tests, Docker independent
@@ -186,7 +191,7 @@ The processor uses KafkaTemplate with string device ID keys and JSON byte values
 ./mvnw clean verify  # Clears obsolete generated models/classes/resources
 ```
 
-Fast tests cover client/environment settings, valid/invalid QoS and topic filters, broker-independent startup/health, contracts, mapper behavior, subscription completion/error propagation, complete JSON forwarding to the configured Kafka destination, and asynchronous send errors. Integration tests use pinned real containers: a Kafka key/payload check and a HiveMQ MQTT-to-Kafka flow with custom topics and QoS 2. The latter waits for SUBACK, asserts broker-granted QoS, checks the complete record and device key, then explicitly disconnects. Failsafe never silently skips when Docker is absent.
+Fast tests cover deployment-only startup, connect-before-subscribe ordering, bounded shutdown, client/environment settings, valid/invalid QoS and topic filters, broker-independent startup/health, contracts, mapper behavior, subscription completion/error propagation, complete JSON forwarding to the configured Kafka destination, and asynchronous send errors. Integration tests use pinned real containers: a Kafka key/payload check and a HiveMQ MQTT-to-Kafka flow with custom topics and QoS 2. The latter invokes the production startup chain, waits for SUBACK, asserts broker-granted QoS, checks the complete record and device key, then exercises configured disconnect cleanup. Failsafe never silently skips when Docker is absent.
 
 MQTT QoS applies to the MQTT leg. Kafka forwarding is asynchronous and does not form an atomic transaction with MQTT acknowledgement; failures are logged, with no durable retry/replay or exactly-once guarantee across brokers. WebFlux remains reactive; these integrations do not provide end-to-end backpressure. No `.block()`, `.join()`, sleeps or explicit blocking waits appear in production event code. Device management, sensor/soil resolution, watering and pump logic remain outside this bridge.
 
@@ -271,3 +276,5 @@ Official compatibility references:
 - [OpenAPI 3.1.2 schema objects](https://spec.openapis.org/oas/v3.1.2.html), [Swagger Parser 3.1 support](https://github.com/swagger-api/swagger-parser) and [NetworkNT validator Java/Jackson compatibility](https://github.com/networknt/json-schema-validator): the 3.x validator supports Java 17+ and Jackson 3 used by Boot 4.
 
 See [AGENT.md](AGENT.md) for authoritative project guidance; [AGENTS.md](AGENTS.md) points to it for automatic agent discovery.
+
+Startup uses Spring Boot’s [ApplicationRunner](https://docs.spring.io/spring-boot/reference/features/spring-application.html#features.spring-application.command-line-runner) with a Spring [profile](https://docs.spring.io/spring-framework/reference/core/beans/environment.html#beans-definition-profiles); MQTT operations use the [HiveMQ asynchronous API](https://hivemq.github.io/hivemq-mqtt-client/docs/quick-start/).

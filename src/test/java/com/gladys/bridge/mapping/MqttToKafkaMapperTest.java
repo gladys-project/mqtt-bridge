@@ -40,6 +40,7 @@ class MqttToKafkaMapperTest {
     @Test
     void copiesDiagnosticsPayloadAndMeasurementMapInsteadOfSharingContainers() throws Exception {
         var source = json.treeToValue(example(), MqttTelemetryMessage.class);
+        source.getPayload().putAdditionalProperty("sampleTemperatureC", 23.5);
         var result = mapper.toKafka(source);
 
         assertThat(result.getErrors()).isNotSameAs(source.getErrors());
@@ -49,12 +50,14 @@ class MqttToKafkaMapperTest {
         source.getErrors().getFirst().setCode("CHANGED");
         source.getPayload().setSensorId(java.util.UUID.fromString("5556111b-70f6-4185-aa89-f66503bc7423"));
         source.getPayload().setRawMoisture(0L);
+        source.getPayload().putAdditionalProperty("sampleTemperatureC", 0.0);
         assertThat(result.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
         assertThat(result.getPayload().getSensorId()).isEqualTo(java.util.UUID.fromString("e62e100e-4e97-42e0-8dd8-46519f0114c9"));
         assertThat(result.getPayload().getRawMoisture()).isEqualTo(2550L);
         assertThat(result.getPayload().getRawMoistureMin()).isEqualTo(2542L);
         assertThat(result.getPayload().getRawMoistureMax()).isEqualTo(2560L);
         assertThat(result.getPayload().getSampleCount()).isEqualTo(16);
+        assertThat(result.getPayload().getAdditionalProperties()).containsEntry("sampleTemperatureC", 23.5);
     }
 
     @Test

@@ -20,11 +20,11 @@
   ],
   "payload": {
     "plantId": "plant-001",
-    "sensorId": "soil-001",
+    "sensorId": "e62e100e-4e97-42e0-8dd8-46519f0114c9",
     "rawMoisture": 2550,
-    "unit": "adc_count",
-    "adcResolutionBits": 12,
-    "calibrationId": "mock-soil-v1",
-    "quality": "GOOD"
+    "calibrationId": "soil-calibration-v1",
+    "rawMoistureMin": 2542,
+    "rawMoistureMax": 2560,
+    "sampleCount": 16
   }
 }

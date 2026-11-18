@@ -95,8 +95,8 @@ components:
       properties:
         sensorId:
           type: string
-          minLength: 1
-          pattern: '[\s\S]*\S[\s\S]*'
+          format: uuid
+          description: Stable UUID assigned to this physical sensor, retained across readings and device boots.
         plantId:
           type: string
           minLength: 1
@@ -105,6 +105,30 @@ components:
           type: string
           minLength: 1
           pattern: '[\s\S]*\S[\s\S]*'
+        rawMoisture:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967295
+          description: Rounded mean of the soil sensor ADC samples; not a moisture percentage.
+        rawMoistureMin:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967295
+          description: Smallest ADC value in the same sample batch.
+        rawMoistureMax:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967295
+          description: Largest ADC value in the same sample batch.
+        sampleCount:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Number of samples used in the mean and range, excluding discarded conversions.
     DeviceError:
       type: object
       additionalProperties: false

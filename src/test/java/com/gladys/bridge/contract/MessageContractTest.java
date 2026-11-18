@@ -106,6 +106,25 @@ class MessageContractTest {
     }
 
     @Test
+    void requiresUuidSensorIdsAndValidSamplingValuesInBothTransportContracts() throws Exception {
+        for (String name : List.of("MqttTelemetryMessage", "KafkaRawTelemetry")) {
+            var invalid = example();
+            ((ObjectNode) invalid.get("payload")).put("sensorId", "soil-001");
+            assertThat(validate(name, invalid)).isNotEmpty();
+            for (String field : List.of("rawMoisture", "rawMoistureMin", "rawMoistureMax")) {
+                invalid = example();
+                ((ObjectNode) invalid.get("payload")).put(field, -1L);
+                assertThat(validate(name, invalid)).isNotEmpty();
+                ((ObjectNode) invalid.get("payload")).put(field, 4_294_967_296L);
+                assertThat(validate(name, invalid)).isNotEmpty();
+            }
+            invalid = example();
+            ((ObjectNode) invalid.get("payload")).put("sampleCount", 0);
+            assertThat(validate(name, invalid)).isNotEmpty();
+        }
+    }
+
+    @Test
     void acceptsAnEmptyErrorsArrayAndRealDeviceReadings() throws Exception {
         var valid = example();
         valid.put("mock", false);
@@ -139,15 +158,15 @@ class MessageContractTest {
         assertThat(raw).isEqualTo(example());
         assertThat(raw.has("batteryLevelPct")).isTrue();
         assertThat(raw.has("errors")).isTrue();
-        assertThat(raw.at("/payload/sensorId").asString()).isEqualTo("soil-001");
-        assertThat(raw.at("/payload/calibrationId").asString()).isEqualTo("mock-soil-v1");
+        assertThat(raw.at("/payload/sensorId").asString()).isEqualTo("e62e100e-4e97-42e0-8dd8-46519f0114c9");
+        assertThat(raw.at("/payload/calibrationId").asString()).isEqualTo("soil-calibration-v1");
     }
 
     @Test
     void supportsDifferentSensorTypesAndSoilMetadataWithoutInterpretingMeasurements() throws Exception {
         var observation = example();
         observation.put("eventType", "SOIL_TEMPERATURE_READING");
-        observation.putObject("payload").put("sensorId", "temperature-002")
+        observation.putObject("payload").put("sensorId", "5556111b-70f6-4185-aa89-f66503bc7423")
                 .put("value", 18.5).put("unit", "degC")
                 .put("calibrationId", "temperature-v2");
         assertThat(validate("MqttTelemetryMessage", observation)).isEmpty();

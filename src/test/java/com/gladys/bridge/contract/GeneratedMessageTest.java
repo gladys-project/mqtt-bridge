@@ -33,8 +33,10 @@ class GeneratedMessageTest {
         assertThat(message.getEventId()).isEqualTo(UUID.fromString("6b529bda-4738-45a2-9f4f-c1d4b7a8a00a"));
         assertThat(message.getDeviceId()).isEqualTo(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"));
         assertThat(message.getObservedAt()).isEqualTo(1794164428500L);
-        assertThat(message.getPayload().getAdditionalProperties().get("rawMoisture")).isEqualTo(2550);
-        assertThat(message.getPayload().getAdditionalProperties().get("adcResolutionBits")).isEqualTo(12);
+        assertThat(message.getPayload().getRawMoisture()).isEqualTo(2550L);
+        assertThat(message.getPayload().getSampleCount()).isEqualTo(16);
+        assertThat(message.getPayload().getRawMoistureMin()).isEqualTo(2542L);
+        assertThat(message.getPayload().getRawMoistureMax()).isEqualTo(2560L);
         assertThat(message.getErrors()).hasSize(1);
         assertThat(message.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
         assertThat(message.getErrors().getFirst().getSeverity().toString()).isEqualTo("ERROR");
@@ -53,10 +55,12 @@ class GeneratedMessageTest {
         var message = json.readValue(Files.readString(Path.of("src/main/resources/openapi/examples/soil-moisture-reading.json")),
                 MqttTelemetryMessage.class);
         message.setBatteryLevelPct(101);
-        message.getPayload().setSensorId("");
+        message.getPayload().setSensorId(null);
+        message.getPayload().setRawMoisture(-1L);
+        message.getPayload().setSampleCount(0);
         message.getErrors().getFirst().setCode("");
         assertThat(validator.validate(message)).extracting(v -> v.getPropertyPath().toString())
-                .contains("batteryLevelPct", "payload.sensorId", "errors[0].code");
+                .contains("batteryLevelPct", "payload.sensorId", "payload.rawMoisture", "payload.sampleCount", "errors[0].code");
     }
 
     @Test
@@ -66,7 +70,7 @@ class GeneratedMessageTest {
 
         var message = json.treeToValue(original, MqttTelemetryMessage.class);
 
-        assertThat(message.getPayload().getAdditionalProperties().get("rawMoisture")).isEqualTo(4_294_967_295L);
+        assertThat(message.getPayload().getRawMoisture()).isEqualTo(4_294_967_295L);
         assertThat(json.readTree(json.writeValueAsString(message))).isEqualTo(original);
     }
 }

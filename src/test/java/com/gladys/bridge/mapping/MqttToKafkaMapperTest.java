@@ -26,7 +26,7 @@ class MqttToKafkaMapperTest {
     void preservesDifferentSensorsAndExtensibleMeasurementsOnTheSameDevice() throws Exception {
         var original = example();
         original.put("eventType", "SOIL_TEMPERATURE_READING");
-        var payload = original.putObject("payload").put("sensorId", "temperature-002")
+        var payload = original.putObject("payload").put("sensorId", "5556111b-70f6-4185-aa89-f66503bc7423")
                 .put("value", 18.5).put("unit", "degC");
         payload.putObject("measurementMetadata").put("accuracy", 0.2).putArray("samples").add(18).add(19);
 
@@ -34,7 +34,7 @@ class MqttToKafkaMapperTest {
 
         assertThat(json.readTree(json.writeValueAsBytes(result))).isEqualTo(original);
         assertThat(result.getDeviceId().toString()).isEqualTo("550e8400-e29b-41d4-a716-446655440000");
-        assertThat(result.getPayload().getSensorId()).isEqualTo("temperature-002");
+        assertThat(result.getPayload().getSensorId()).isEqualTo(java.util.UUID.fromString("5556111b-70f6-4185-aa89-f66503bc7423"));
     }
 
     @Test
@@ -47,11 +47,14 @@ class MqttToKafkaMapperTest {
         assertThat(result.getPayload()).isNotSameAs(source.getPayload());
         assertThat(result.getPayload().getAdditionalProperties()).isNotSameAs(source.getPayload().getAdditionalProperties());
         source.getErrors().getFirst().setCode("CHANGED");
-        source.getPayload().setSensorId("changed");
-        source.getPayload().putAdditionalProperty("rawMoisture", 0);
+        source.getPayload().setSensorId(java.util.UUID.fromString("5556111b-70f6-4185-aa89-f66503bc7423"));
+        source.getPayload().setRawMoisture(0L);
         assertThat(result.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
-        assertThat(result.getPayload().getSensorId()).isEqualTo("soil-001");
-        assertThat(result.getPayload().getAdditionalProperty("rawMoisture")).isEqualTo(2550);
+        assertThat(result.getPayload().getSensorId()).isEqualTo(java.util.UUID.fromString("e62e100e-4e97-42e0-8dd8-46519f0114c9"));
+        assertThat(result.getPayload().getRawMoisture()).isEqualTo(2550L);
+        assertThat(result.getPayload().getRawMoistureMin()).isEqualTo(2542L);
+        assertThat(result.getPayload().getRawMoistureMax()).isEqualTo(2560L);
+        assertThat(result.getPayload().getSampleCount()).isEqualTo(16);
     }
 
     @Test

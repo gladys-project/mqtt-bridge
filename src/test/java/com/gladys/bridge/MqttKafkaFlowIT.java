@@ -123,7 +123,7 @@ class MqttKafkaFlowIT {
                 original = input.readAllBytes();
             }
             // Publish only after the configured subscription has received SUBACK.
-            mqtt.publish(Mqtt5Publish.builder().topic("integration/sensors/soil-001/readings")
+            mqtt.publish(Mqtt5Publish.builder().topic("integration/sensors/e62e100e-4e97-42e0-8dd8-46519f0114c9/readings")
                     .qos(MqttQos.EXACTLY_ONCE).payload(original).build()).get(10, TimeUnit.SECONDS);
             var records = new ArrayList<ConsumerRecord<String, byte[]>>();
             long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();

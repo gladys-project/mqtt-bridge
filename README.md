@@ -38,7 +38,7 @@ Install Java 25 and Docker with Compose v2. Maven Wrapper supplies Maven. The st
 | File | Services | Purpose |
 | --- | --- | --- |
 | [compose.yml](compose.yml) | mqtt-kafka-bridge only | Build/run this application |
-| [infra/compose.yml](infra/compose.yml) | Kafka and Mosquitto only | Independent local broker infrastructure |
+| [infra/compose.yml](infra/compose.yml) | Kafka, Mosquitto and optional MongoDB | Shared infrastructure for Gladys services |
 
 Both use the external Docker network `gladys` (override with `GLADYS_NETWORK`). Create it once; neither Compose project owns or deletes it:
 
@@ -79,7 +79,7 @@ The root stack has no broker services or `depends_on` entries. `docker compose d
 
 Kafka advertises `localhost:9092` for host clients and `kafka:29092` for containers on the shared network. Mosquitto uses `localhost:1883` from the host and `mosquitto:1883` from containers. `localhost` inside the bridge container refers to that container, so use broker service names there. Kafka's internal advertised address must be reachable from the bridge. Other independently managed brokers can be selected through the environment values.
 
-The supplied infrastructure Compose is disposable local development infrastructure: Kafka KRaft/plaintext and anonymous Mosquitto, loopback-only host ports, no persistent volumes or automatic topic creation. Manage secured/persistent server brokers independently. For local message publishing, provision the raw topic in the infrastructure stack first:
+The supplied Kafka and Mosquitto configuration is for local development: Kafka KRaft/plaintext and anonymous Mosquitto, loopback-only host ports, no persistent broker volumes or automatic topic creation. For local message publishing, provision the raw topic in the infrastructure stack first:
 
 ```bash
 docker compose -f infra/compose.yml exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --create --if-not-exists --topic gladys.telemetry.raw.v1 --partitions 1 --replication-factor 1
@@ -138,6 +138,21 @@ Create the external `gladys` network once before starting the stacks. A verified
 `--env-file` supplies Compose interpolation values. Each service should explicitly map only its own environment settings. The bridge Compose file lists the client, topic and supported Kafka-security variables it forwards, so unrelated applications' variables stay outside the bridge container. Infrastructure settings such as `GLADYS_NETWORK` and host ports are consumed by Compose. See Docker's [shared-file/interpolation guidance](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
 
 No `BRIDGE_ENV_FILE` variable or per-service env file is needed. For local development, an ignored `.env` beside `compose.yml` remains the default interpolation file. Spring Boot receives the selected variables from Compose; it does not read the shared file directly. Use this shared-file option for later `down`, `logs` or other Compose commands too, so the same names and settings resolve consistently.
+
+## MongoDB for the plant device data service
+
+The optional `mongo` service uses a pinned MongoDB 8.0.34 image and stores data in the `mongo-data` named volume. It listens on `mongo:27017` on the shared Docker network. Compose publishes no MongoDB host port. The inline initialization config requires Docker Compose 2.23.1 or newer.
+
+Add `GLADYS_MONGO_ROOT_PASSWORD`, `GLADYS_MONGO_PLANT_DEVICE_PASSWORD` and `SPRING_MONGODB_URI` to the existing `/etc/gladys/gladys.env`. Use the structure in [.env.example](.env.example) with separate random URL-safe passwords. The initialization script grants the application user `readWrite` on `plant_device_data`. It runs only on a fresh volume. Changing the env file after initialization requires rotating the credentials in MongoDB too.
+
+With the updated shared file at `/home/franek/gladys/compose.yml`, start just MongoDB:
+
+```bash
+sudo docker compose --env-file /etc/gladys/gladys.env \
+  -f /home/franek/gladys/compose.yml up -d --wait --wait-timeout 120 mongo
+```
+
+The health check signs in using the application account. Deploy the plant device data service after MongoDB is healthy. For other checkouts, use the same command with the path to `infra/compose.yml`.
 
 ## Configuration
 

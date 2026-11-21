@@ -39,6 +39,55 @@ services:
       interval: 5s
       timeout: 6s
       retries: 10
+  mongo:
+    image: mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+    profiles: [mongo]
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: gladys_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${GLADYS_MONGO_ROOT_PASSWORD:-}
+      MONGO_INITDB_DATABASE: plant_device_data
+      GLADYS_MONGO_PLANT_DEVICE_PASSWORD: ${GLADYS_MONGO_PLANT_DEVICE_PASSWORD:-}
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        : "$${MONGO_INITDB_ROOT_PASSWORD:?Set GLADYS_MONGO_ROOT_PASSWORD in the shared env file}"
+        : "$${GLADYS_MONGO_PLANT_DEVICE_PASSWORD:?Set GLADYS_MONGO_PLANT_DEVICE_PASSWORD in the shared env file}"
+        exec docker-entrypoint.sh mongod
+    configs:
+      - source: plant-device-data-mongo-init
+        target: /docker-entrypoint-initdb.d/01-plant-device-data.js
+    volumes:
+      - mongo-data:/data/db
+    networks: [gladys]
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --norc
+        - --host
+        - mongo
+        - plant_device_data
+        - --eval
+        - 'if (!db.auth("plant_device_data", process.env.GLADYS_MONGO_PLANT_DEVICE_PASSWORD)) quit(1); quit(db.runCommand({ping: 1}).ok ? 0 : 1);'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+configs:
+  plant-device-data-mongo-init:
+    content: |
+      db.createUser({
+        user: "plant_device_data",
+        pwd: process.env.GLADYS_MONGO_PLANT_DEVICE_PASSWORD,
+        roles: [{role: "readWrite", db: "plant_device_data"}]
+      });
+
+volumes:
+  mongo-data:
 
 networks:
   gladys:

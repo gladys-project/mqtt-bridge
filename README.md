@@ -38,7 +38,7 @@ Install Java 25 and Docker with Compose v2. Maven Wrapper supplies Maven. The st
 | File | Services | Purpose |
 | --- | --- | --- |
 | [compose.yml](compose.yml) | mqtt-kafka-bridge only | Build/run this application |
-| [infra/compose.yml](infra/compose.yml) | Kafka and Mosquitto only | Independent local broker infrastructure |
+| [infra/compose.yml](infra/compose.yml) | Kafka, Mosquitto, optional MongoDB and APISIX | Shared infrastructure for Gladys services |
 
 Both use the external Docker network `gladys` (override with `GLADYS_NETWORK`). Create it once; neither Compose project owns or deletes it:
 
@@ -79,7 +79,7 @@ The root stack has no broker services or `depends_on` entries. `docker compose d
 
 Kafka advertises `localhost:9092` for host clients and `kafka:29092` for containers on the shared network. Mosquitto uses `localhost:1883` from the host and `mosquitto:1883` from containers. `localhost` inside the bridge container refers to that container, so use broker service names there. Kafka's internal advertised address must be reachable from the bridge. Other independently managed brokers can be selected through the environment values.
 
-The supplied infrastructure Compose is disposable local development infrastructure: Kafka KRaft/plaintext and anonymous Mosquitto, loopback-only host ports, no persistent volumes or automatic topic creation. Manage secured/persistent server brokers independently. For local message publishing, provision the raw topic in the infrastructure stack first:
+The supplied Kafka and Mosquitto configuration is for local development: Kafka KRaft/plaintext and anonymous Mosquitto, loopback-only host ports, no persistent broker volumes or automatic topic creation. For local message publishing, provision the raw topic in the infrastructure stack first:
 
 ```bash
 docker compose -f infra/compose.yml exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --create --if-not-exists --topic gladys.telemetry.raw.v1 --partitions 1 --replication-factor 1
@@ -138,6 +138,35 @@ Create the external `gladys` network once before starting the stacks. A verified
 `--env-file` supplies Compose interpolation values. Each service should explicitly map only its own environment settings. The bridge Compose file lists the client, topic and supported Kafka-security variables it forwards, so unrelated applications' variables stay outside the bridge container. Infrastructure settings such as `GLADYS_NETWORK` and host ports are consumed by Compose. See Docker's [shared-file/interpolation guidance](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
 
 No `BRIDGE_ENV_FILE` variable or per-service env file is needed. For local development, an ignored `.env` beside `compose.yml` remains the default interpolation file. Spring Boot receives the selected variables from Compose; it does not read the shared file directly. Use this shared-file option for later `down`, `logs` or other Compose commands too, so the same names and settings resolve consistently.
+
+## MongoDB for the plant device data service
+
+The optional `mongo` service uses a pinned MongoDB 8.0.34 image and stores data in the `mongo-data` named volume. It listens on `mongo:27017` on the shared Docker network. Compose publishes no MongoDB host port. The inline initialization config requires Docker Compose 2.23.1 or newer.
+
+Add `GLADYS_MONGO_ROOT_PASSWORD`, `GLADYS_MONGO_PLANT_DEVICE_PASSWORD` and `SPRING_MONGODB_URI` to the existing `/etc/gladys/gladys.env`. Use the structure in [.env.example](.env.example) with separate random URL-safe passwords. The initialization script grants the application user `readWrite` on `plant_device_data`. It runs only on a fresh volume. Changing the env file after initialization requires rotating the credentials in MongoDB too.
+
+With the updated shared file at `/home/franek/gladys/compose.yml`, start just MongoDB:
+
+```bash
+sudo docker compose --env-file /etc/gladys/gladys.env \
+  -f /home/franek/gladys/compose.yml up -d --wait --wait-timeout 120 mongo
+```
+
+The health check signs in using the application account. Deploy the plant device data service after MongoDB is healthy. For other checkouts, use the same command with the path to `infra/compose.yml`.
+
+## APISIX gateway
+
+The optional `apisix` service runs Apache APISIX 3.21.0 in [file-driven standalone mode](https://apisix.apache.org/docs/apisix/deployment-modes/#file-driven). Its configuration and routes are embedded in the shared Compose file. It forwards `GET /devices` unchanged to `plant-device-data-service:8080` on the same external `gladys` Docker network. The device service must be running to answer the request.
+
+With the updated shared Compose file on the server, start just the gateway and call it:
+
+```bash
+sudo docker compose --env-file /etc/gladys/gladys.env \
+  -f /home/franek/gladys/compose.yml up -d --wait --wait-timeout 60 apisix
+curl --fail http://127.0.0.1:9080/devices
+```
+
+APISIX publishes only its HTTP gateway port on loopback. Add `APISIX_HTTP_PORT` to the shared env file if you need to override `9080`. The internal readiness check verifies that APISIX loaded its configuration. The gateway runs independently of etcd and the Admin API.
 
 ## Configuration
 
@@ -282,3 +311,5 @@ Startup uses Spring Boot’s [ApplicationRunner](https://docs.spring.io/spring-b
 Sensor payload update: `sensorId` is a stable UUID. OpenAPI generates its Java property as `UUID`, and generates typed `Long` ADC values (`rawMoisture`, `rawMoistureMin`, `rawMoistureMax`) and positive `Integer sampleCount`. `rawMoisture` is the rounded sample mean. `calibrationId` remains an optional nonblank string. Moisture messages omit `unit`, ADC resolution and the previous fixed quality label; other sensor types can still use extension properties. Calibration settings belong to the sensor/calibration record. The bridge preserves all these fields; the device processor intentionally excludes the entire sensor payload from device-data output.
 
 Regenerate DTOs and MapStruct implementations with the normal Maven build after this contract change; do not edit generated files under `target/`. Examples and mapping/validation test sources were updated, but tests and builds were not run at the user's request. Legacy non-UUID sensor IDs must be replaced when updating firmware and consumers.
+
+Power telemetry may include measured `supplyVoltageMv` (board rail millivolts). The optional `batteryLevelPct` field is omitted when there is no battery charge reading. Older messages with a reported battery percentage remain valid. Deploy updated consumers before enabling this firmware format.

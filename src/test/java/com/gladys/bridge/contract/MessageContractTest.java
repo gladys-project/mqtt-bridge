@@ -49,9 +49,21 @@ class MessageContractTest {
         assertValid(example());
     }
 
+    @Test
+    void acceptsSupplyVoltageWithoutABatteryReadingInBothTransportContracts() throws Exception {
+        for (String name : List.of("MqttTelemetryMessage", "KafkaRawTelemetry")) {
+            var observation = example();
+            observation.remove("batteryLevelPct");
+            observation.put("supplyVoltageMv", 4750).putArray("errors");
+            assertThat(validate(name, observation)).isEmpty();
+            observation.put("supplyVoltageMv", 0);
+            assertThat(validate(name, observation)).isNotEmpty();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"schemaVersion", "eventId", "eventType", "deviceId", "bootId", "sequence", "uptimeMs",
-            "observedAt", "clockSource", "mock", "batteryLevelPct", "errors", "payload"})
+            "observedAt", "clockSource", "mock", "errors", "payload"})
     void rejectsMissingEnvelopeFields(String field) throws Exception {
         var invalid = example();
         invalid.remove(field);

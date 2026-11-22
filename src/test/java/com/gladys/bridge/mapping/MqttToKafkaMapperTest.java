@@ -73,6 +73,17 @@ class MqttToKafkaMapperTest {
     }
 
     @Test
+    void forwardsSupplyVoltageWithoutInventingABatteryPercentage() throws Exception {
+        var original = example();
+        original.remove("batteryLevelPct");
+        original.put("supplyVoltageMv", 4750).putArray("errors");
+
+        var result = mapper.toKafka(json.treeToValue(original, MqttTelemetryMessage.class));
+
+        assertThat(json.readTree(json.writeValueAsBytes(result))).isEqualTo(original);
+    }
+
+    @Test
     void mapsNullToNull() {
         assertThat(mapper.toKafka(null)).isNull();
     }

@@ -29,7 +29,7 @@ components:
         - observedAt
         - clockSource
         - mock
-          - errors
+        - errors
         - payload
       properties:
         schemaVersion:

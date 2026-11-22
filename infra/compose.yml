@@ -76,8 +76,63 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+  apisix:
+    image: apache/apisix:3.21.0-debian@sha256:1741a8e1186e5c39ea10e6b4fb3e682534d1705efb8328195de5b41ad0657380
+    profiles: [apisix]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APISIX_HTTP_PORT:-9080}:9080"
+    environment:
+      APISIX_STAND_ALONE: "true"
+    configs:
+      - source: apisix-config
+        target: /usr/local/apisix/conf/config.yaml
+      - source: apisix-routes
+        target: /usr/local/apisix/conf/apisix.yaml
+    networks: [gladys]
+    healthcheck:
+      # The Debian image does not include curl.
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - |
+          exec 3<>/dev/tcp/127.0.0.1/7085
+          printf 'GET /status/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
+          read -r protocol status reason <&3
+          test "$$status" = 200
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
 configs:
+  apisix-config:
+    content: |
+      apisix:
+        node_listen: 9080
+        enable_ipv6: false
+        enable_control: false
+        ssl:
+          enable: false
+        status:
+          ip: 127.0.0.1
+          port: 7085
+      deployment:
+        role: data_plane
+        role_data_plane:
+          config_provider: yaml
+  apisix-routes:
+    content: |
+      routes:
+        - id: plant-device-list
+          uri: /devices
+          methods: [GET]
+          upstream:
+            type: roundrobin
+            nodes:
+              "plant-device-data-service:8080": 1
+      #END
   plant-device-data-mongo-init:
     content: |
       db.createUser({

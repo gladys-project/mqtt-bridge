@@ -38,7 +38,7 @@ Install Java 25 and Docker with Compose v2. Maven Wrapper supplies Maven. The st
 | File | Services | Purpose |
 | --- | --- | --- |
 | [compose.yml](compose.yml) | mqtt-kafka-bridge only | Build/run this application |
-| [infra/compose.yml](infra/compose.yml) | Kafka, Mosquitto and optional MongoDB | Shared infrastructure for Gladys services |
+| [infra/compose.yml](infra/compose.yml) | Kafka, Mosquitto, optional MongoDB and APISIX | Shared infrastructure for Gladys services |
 
 Both use the external Docker network `gladys` (override with `GLADYS_NETWORK`). Create it once; neither Compose project owns or deletes it:
 
@@ -153,6 +153,20 @@ sudo docker compose --env-file /etc/gladys/gladys.env \
 ```
 
 The health check signs in using the application account. Deploy the plant device data service after MongoDB is healthy. For other checkouts, use the same command with the path to `infra/compose.yml`.
+
+## APISIX gateway
+
+The optional `apisix` service runs Apache APISIX 3.21.0 in [file-driven standalone mode](https://apisix.apache.org/docs/apisix/deployment-modes/#file-driven). Its configuration and routes are embedded in the shared Compose file. It forwards `GET /devices` unchanged to `plant-device-data-service:8080` on the same external `gladys` Docker network. The device service must be running to answer the request.
+
+With the updated shared Compose file on the server, start just the gateway and call it:
+
+```bash
+sudo docker compose --env-file /etc/gladys/gladys.env \
+  -f /home/franek/gladys/compose.yml up -d --wait --wait-timeout 60 apisix
+curl --fail http://127.0.0.1:9080/devices
+```
+
+APISIX publishes only its HTTP gateway port on loopback. Add `APISIX_HTTP_PORT` to the shared env file if you need to override `9080`. The internal readiness check verifies that APISIX loaded its configuration. The gateway runs independently of etcd and the Admin API.
 
 ## Configuration
 
@@ -297,3 +311,5 @@ Startup uses Spring Boot’s [ApplicationRunner](https://docs.spring.io/spring-b
 Sensor payload update: `sensorId` is a stable UUID. OpenAPI generates its Java property as `UUID`, and generates typed `Long` ADC values (`rawMoisture`, `rawMoistureMin`, `rawMoistureMax`) and positive `Integer sampleCount`. `rawMoisture` is the rounded sample mean. `calibrationId` remains an optional nonblank string. Moisture messages omit `unit`, ADC resolution and the previous fixed quality label; other sensor types can still use extension properties. Calibration settings belong to the sensor/calibration record. The bridge preserves all these fields; the device processor intentionally excludes the entire sensor payload from device-data output.
 
 Regenerate DTOs and MapStruct implementations with the normal Maven build after this contract change; do not edit generated files under `target/`. Examples and mapping/validation test sources were updated, but tests and builds were not run at the user's request. Legacy non-UUID sensor IDs must be replaced when updating firmware and consumers.
+
+Power telemetry may include measured `supplyVoltageMv` (board rail millivolts). The optional `batteryLevelPct` field is omitted when there is no battery charge reading. Older messages with a reported battery percentage remain valid. Deploy updated consumers before enabling this firmware format.

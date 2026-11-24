@@ -24,7 +24,6 @@ components:
         - uptimeMs
         - observedAt
         - clockSource
-        - mock
         - errors
         - payload
       properties:
@@ -69,8 +68,6 @@ components:
           type: string
           pattern: '^[A-Z][A-Z0-9_]*$'
           description: Clock provenance, for example MANUAL_TEST. No closed vocabulary is established yet.
-        mock:
-          type: boolean
         batteryLevelPct:
           type: integer
           minimum: 0

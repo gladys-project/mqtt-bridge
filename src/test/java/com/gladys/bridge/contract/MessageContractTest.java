@@ -63,7 +63,7 @@ class MessageContractTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"schemaVersion", "eventId", "eventType", "deviceId", "bootId", "sequence", "uptimeMs",
-            "observedAt", "clockSource", "mock", "errors", "payload"})
+            "observedAt", "clockSource", "errors", "payload"})
     void rejectsMissingEnvelopeFields(String field) throws Exception {
         var invalid = example();
         invalid.remove(field);
@@ -98,9 +98,6 @@ class MessageContractTest {
         assertInvalid(invalid);
         invalid = example();
         invalid.put("eventType", "");
-        assertInvalid(invalid);
-        invalid = example();
-        invalid.put("mock", "true");
         assertInvalid(invalid);
     }
 
@@ -139,7 +136,6 @@ class MessageContractTest {
     @Test
     void acceptsAnEmptyErrorsArrayAndRealDeviceReadings() throws Exception {
         var valid = example();
-        valid.put("mock", false);
         valid.putArray("errors");
         assertValid(valid);
     }

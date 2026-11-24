@@ -63,7 +63,7 @@ class MqttToKafkaMapperTest {
     @Test
     void preservesZeroValuesEmptyDiagnosticsAndLargeMeasurementNumbers() throws Exception {
         var original = example();
-        original.put("batteryLevelPct", 0).put("mock", false).put("sequence", 0).put("uptimeMs", 0);
+        original.put("batteryLevelPct", 0).put("sequence", 0).put("uptimeMs", 0);
         original.putArray("errors");
         ((ObjectNode) original.get("payload")).put("rawMoisture", 4_294_967_295L);
 

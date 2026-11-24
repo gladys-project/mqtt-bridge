@@ -8,14 +8,13 @@
   "uptimeMs": 28500,
   "observedAt": 1794164428500,
   "clockSource": "MANUAL_TEST",
-  "mock": true,
   "batteryLevelPct": 10,
   "errors": [
     {
       "code": "BAT_01",
       "component": "BATTERY",
       "severity": "ERROR",
-      "message": "Mock battery level is below the pump operating threshold."
+      "message": "Battery level is below the pump operating threshold."
     }
   ],
   "payload": {

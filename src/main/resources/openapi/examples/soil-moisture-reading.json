@@ -12,7 +12,7 @@
   "batteryLevelPct": 10,
   "errors": [
     {
-      "code": "LOW_BATTERY",
+      "code": "BAT_01",
       "component": "BATTERY",
       "severity": "ERROR",
       "message": "Mock battery level is below the pump operating threshold."

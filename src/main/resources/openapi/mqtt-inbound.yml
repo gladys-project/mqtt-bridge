@@ -86,7 +86,7 @@ components:
           x-jackson-json-include-policy: NON_NULL
         errors:
           type: array
-          description: Device-reported diagnostics; may be empty. The bridge does not interpret them.
+          description: Complete active diagnostic snapshot for this device. An empty array reports no active conditions. Identify conditions by component and code.
           items:
             $ref: '#/components/schemas/DeviceError'
         payload:
@@ -144,14 +144,26 @@ components:
       properties:
         code:
           type: string
-          pattern: '^[A-Z][A-Z0-9_]*$'
+          minLength: 6
+          maxLength: 6
+          pattern: '^[A-Z0-9]{3}_[A-Z0-9]{2}$'
+          description: Stable condition identifier with five uppercase alphanumeric characters and one underscore, such as BAT_01. Keep the code unchanged when severity changes.
+          example: BAT_01
+          x-diagnostic-codes:
+            BAT_01: Low battery charge
+            BAT_02: Battery measurement unavailable
+            SEN_01: Sensor read failed
+            SEN_02: Sensor reading outside its supported range
+            PMP_01: Pump activation failed
+            PMP_02: Pump failed to stop
         component:
           type: string
           pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Stable identifier of the reporting component instance, such as SOIL_SENSOR_A or SOIL_SENSOR_B.
         severity:
           type: string
           enum: [INFO, WARNING, ERROR, CRITICAL]
-          description: Initial v1 diagnostic severity vocabulary.
+          description: Current severity of this condition. Condition identity uses component and code.
         message:
           type: string
           minLength: 1

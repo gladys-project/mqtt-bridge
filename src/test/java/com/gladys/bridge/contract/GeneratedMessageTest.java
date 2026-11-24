@@ -38,7 +38,7 @@ class GeneratedMessageTest {
         assertThat(message.getPayload().getRawMoistureMin()).isEqualTo(2542L);
         assertThat(message.getPayload().getRawMoistureMax()).isEqualTo(2560L);
         assertThat(message.getErrors()).hasSize(1);
-        assertThat(message.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
+        assertThat(message.getErrors().getFirst().getCode()).isEqualTo("BAT_01");
         assertThat(message.getErrors().getFirst().getSeverity().toString()).isEqualTo("ERROR");
         assertThat(json.readTree(json.writeValueAsString(message))).isEqualTo(json.readTree(original));
     }

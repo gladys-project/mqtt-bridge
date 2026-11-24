@@ -47,11 +47,11 @@ class MqttToKafkaMapperTest {
         assertThat(result.getErrors().getFirst()).isNotSameAs(source.getErrors().getFirst());
         assertThat(result.getPayload()).isNotSameAs(source.getPayload());
         assertThat(result.getPayload().getAdditionalProperties()).isNotSameAs(source.getPayload().getAdditionalProperties());
-        source.getErrors().getFirst().setCode("CHANGED");
+        source.getErrors().getFirst().setCode("SEN_02");
         source.getPayload().setSensorId(java.util.UUID.fromString("5556111b-70f6-4185-aa89-f66503bc7423"));
         source.getPayload().setRawMoisture(0L);
         source.getPayload().putAdditionalProperty("sampleTemperatureC", 0.0);
-        assertThat(result.getErrors().getFirst().getCode()).isEqualTo("LOW_BATTERY");
+        assertThat(result.getErrors().getFirst().getCode()).isEqualTo("BAT_01");
         assertThat(result.getPayload().getSensorId()).isEqualTo(java.util.UUID.fromString("e62e100e-4e97-42e0-8dd8-46519f0114c9"));
         assertThat(result.getPayload().getRawMoisture()).isEqualTo(2550L);
         assertThat(result.getPayload().getRawMoistureMin()).isEqualTo(2542L);
@@ -63,7 +63,7 @@ class MqttToKafkaMapperTest {
     @Test
     void preservesZeroValuesEmptyDiagnosticsAndLargeMeasurementNumbers() throws Exception {
         var original = example();
-        original.put("batteryLevelPct", 0).put("mock", false).put("sequence", 0).put("uptimeMs", 0);
+        original.put("batteryLevelPct", 0).put("sequence", 0).put("uptimeMs", 0);
         original.putArray("errors");
         ((ObjectNode) original.get("payload")).put("rawMoisture", 4_294_967_295L);
 
@@ -99,5 +99,26 @@ class MqttToKafkaMapperTest {
         try (var input = new ClassPathResource("openapi/examples/soil-moisture-reading.json").getInputStream()) {
             return (ObjectNode) json.readTree(input);
         }
+    }
+
+    @Test
+    void preservesDistinctCriticalConditionsAcrossSuccessiveSnapshots() throws Exception {
+        var observation = example();
+        var errors = observation.putArray("errors");
+        errors.addObject().put("code", "SEN_01").put("component", "SOIL_SENSOR_A")
+                .put("severity", "CRITICAL").put("message", "Sensor read failed.");
+        errors.addObject().put("code", "PMP_01").put("component", "PUMP_A")
+                .put("severity", "CRITICAL").put("message", "Pump activation failed.");
+
+        var first = mapper.toKafka(json.treeToValue(observation, MqttTelemetryMessage.class));
+        assertThat(json.readTree(json.writeValueAsString(first)).get("errors")).isEqualTo(errors);
+
+        errors.remove(0);
+        var next = mapper.toKafka(json.treeToValue(observation, MqttTelemetryMessage.class));
+        var nextErrors = json.readTree(json.writeValueAsString(next)).get("errors");
+        assertThat(nextErrors).isEqualTo(errors);
+        assertThat(nextErrors.size()).isEqualTo(1);
+        assertThat(nextErrors.get(0).get("code").asString()).isEqualTo("PMP_01");
+        assertThat(nextErrors.get(0).get("severity").asString()).isEqualTo("CRITICAL");
     }
 }

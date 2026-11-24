@@ -15,7 +15,7 @@ Two OpenAPI 3.1.2 files under `src/main/resources/openapi/` define the bridge bo
 
 Both contain the complete observation: envelope, battery, errors and sensor payload. The [original MQTT example](src/main/resources/openapi/examples/soil-moisture-reading.json) and [Kafka example](src/main/resources/openapi/examples/kafka-raw-telemetry.json) have identical content. There are no separate device/telemetry projections in this bridge. The intended Kafka key is `deviceId` for per-device partition ordering. Event ID, boot ID and sequence support downstream correlation/deduplication.
 
-Schemas declare version 1, UUID event/device/boot IDs, nonnegative sequence/uptime/epoch-millisecond timestamp, uppercase event type and clock source, mock flag, battery percentage 0–100, diagnostics and payload. `payload.sensorId` is required. Plant/calibration IDs are optional metadata; measurement fields remain extensible for different sensors. Raw moisture stays an ADC count, not a percentage. Downstream services interpret measurements and resolve sensor-to-soil associations.
+Schemas declare version 1, UUID event/device/boot IDs, nonnegative sequence/uptime/epoch-millisecond timestamp, uppercase event type and clock source, battery percentage 0–100, diagnostics and payload. `payload.sensorId` is required. Plant/calibration IDs are optional metadata; measurement fields remain extensible for different sensors. Raw moisture stays an ADC count, not a percentage. Downstream services interpret measurements and resolve sensor-to-soil associations.
 
 Maven generates message DTOs during `generate-sources`, then compiles/packages them for runtime use. MapStruct generates the Spring message mapper during compilation. The JVM does not generate code at startup. Edit the OpenAPI sources, never generated files under ignored `target/`. No controller, transport or message processor code is generated. Contract tests check JSON Schema rules; generated Jakarta Validation covers a subset. The pinned generator warns that OpenAPI 3.1 support is beta; concrete examples and generated DTO behavior are tested.
 
@@ -313,3 +313,22 @@ Sensor payload update: `sensorId` is a stable UUID. OpenAPI generates its Java p
 Regenerate DTOs and MapStruct implementations with the normal Maven build after this contract change; do not edit generated files under `target/`. Examples and mapping/validation test sources were updated, but tests and builds were not run at the user's request. Legacy non-UUID sensor IDs must be replaced when updating firmware and consumers.
 
 Power telemetry may include measured `supplyVoltageMv` (board rail millivolts). The optional `batteryLevelPct` field is omitted when there is no battery charge reading. Older messages with a reported battery percentage remain valid. Deploy updated consumers before enabling this firmware format.
+
+## Diagnostic condition codes
+
+New observations use condition codes with three uppercase alphanumeric characters, an underscore and two uppercase alphanumeric characters, for example `BAT_01`. The OpenAPI `DeviceError.code` definition validates this six-character format. The catalog is extensible through additional well-formed identifiers.
+
+| Code | Condition |
+| --- | --- |
+| `BAT_01` | Low battery charge |
+| `BAT_02` | Battery measurement unavailable |
+| `SEN_01` | Sensor read failed |
+| `SEN_02` | Sensor reading outside its supported range |
+| `PMP_01` | Pump activation failed |
+| `PMP_02` | Pump failed to stop |
+
+Keep a condition's code stable as its severity changes. Within a device entry, `(component, code)` identifies a condition. Use a stable component identifier for each physical instance, such as `SOIL_SENSOR_A` and `SOIL_SENSOR_B`.
+
+The `errors` array declares the complete active diagnostic snapshot. For two ordered, complete observations, compare their sets of `(component, code)` pairs. A pair absent from the next snapshot has resolved. For example, critical `SEN_01` and critical `PMP_01` are two conditions; a later snapshot containing only `PMP_01` indicates that the sensor condition has resolved. Reconciliation requires complete snapshots and a reliable observation order. Diagnostic reconciliation and history transitions belong to the device service.
+
+Coordinate producer and consumer updates when adopting the compact format. Incoming legacy descriptive codes such as `LOW_BATTERY` fail the new validation. Existing persisted device summaries retain their original codes for historical compatibility.

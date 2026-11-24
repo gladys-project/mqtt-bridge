@@ -28,7 +28,6 @@ components:
         - uptimeMs
         - observedAt
         - clockSource
-        - mock
         - errors
         - payload
       properties:
@@ -73,8 +72,6 @@ components:
           type: string
           pattern: '^[A-Z][A-Z0-9_]*$'
           description: Clock provenance, for example MANUAL_TEST. No closed vocabulary is established yet.
-        mock:
-          type: boolean
         batteryLevelPct:
           type: integer
           minimum: 0
@@ -90,7 +87,7 @@ components:
           x-jackson-json-include-policy: NON_NULL
         errors:
           type: array
-          description: Device-reported diagnostics; may be empty. The bridge does not interpret them.
+          description: Complete active diagnostic snapshot for this device. An empty array reports no active conditions. Identify conditions by component and code.
           items:
             $ref: '#/components/schemas/DeviceError'
         payload:
